@@ -112,13 +112,28 @@ async function importMajors(seedsDir: string, stats: ImportStats) {
 
   const majors = JSON.parse(fs.readFileSync(filePath, 'utf8'));
 
-  // 使用批量插入
-  await prisma.major.createMany({
-    data: majors,
+  // 去除id字段以避免唯一约束冲突，让Prisma自动生成新的ID
+  const majorsWithoutId = majors.map((major: Record<string, unknown>) => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id, ...majorData } = major;
+    return majorData;
   });
 
-  stats.majors = majors.length;
-  console.log(`   ✓ 已导入 ${majors.length} 条专业数据`);
+  // 使用逐个插入以便更好地处理错误
+  let successCount = 0;
+  for (const majorData of majorsWithoutId) {
+    try {
+      await prisma.major.create({
+        data: majorData,
+      });
+      successCount++;
+    } catch {
+      console.log(`   ⚠️  跳过重复专业: ${majorData.name}`);
+    }
+  }
+
+  stats.majors = successCount;
+  console.log(`   ✓ 已导入 ${successCount} 条专业数据`);
 }
 
 /**
@@ -143,19 +158,43 @@ async function importGraduationTopics(
 
   const topics = JSON.parse(fs.readFileSync(filePath, 'utf8'));
 
-  // 批量导入，每次1000条
-  const batchSize = 1000;
-  for (let i = 0; i < topics.length; i += batchSize) {
-    const batch = topics.slice(i, i + batchSize);
-    await prisma.graduationTopic.createMany({
-      data: batch,
-    });
-    console.log(
-      `   ✓ 已导入 ${Math.min(i + batchSize, topics.length)}/${topics.length} 条题目数据`
-    );
+  // 去除id字段以避免冲突，让Prisma自动生成新的ID
+  const topicsWithoutId = topics.map((topic: Record<string, unknown>) => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id, ...topicData } = topic;
+    return topicData;
+  });
+
+  // 使用逐个插入以便处理重复题目
+  let successCount = 0;
+  let skipCount = 0;
+  const totalCount = topicsWithoutId.length;
+
+  for (let i = 0; i < topicsWithoutId.length; i++) {
+    const topicData = topicsWithoutId[i];
+
+    try {
+      await prisma.graduationTopic.create({
+        data: topicData,
+      });
+      successCount++;
+    } catch {
+      skipCount++;
+      // 静默跳过重复题目，避免日志过多
+    }
+
+    // 每1000条显示进度
+    if ((i + 1) % 1000 === 0 || i === topicsWithoutId.length - 1) {
+      console.log(
+        `   ✓ 已处理 ${i + 1}/${totalCount} 条题目数据 (成功: ${successCount}, 跳过重复: ${skipCount})`
+      );
+    }
   }
 
-  stats.graduationTopics = topics.length;
+  stats.graduationTopics = successCount;
+  console.log(
+    `   ✅ 导入完成: 成功导入 ${successCount} 条，跳过重复 ${skipCount} 条`
+  );
 }
 
 /**
@@ -230,19 +269,45 @@ async function importMajorMarkovChains(seedsDir: string, stats: ImportStats) {
 
   const majorMarkovChains = JSON.parse(fs.readFileSync(filePath, 'utf8'));
 
-  // 批量导入
-  const batchSize = 1000;
-  for (let i = 0; i < majorMarkovChains.length; i += batchSize) {
-    const batch = majorMarkovChains.slice(i, i + batchSize);
-    await prisma.majorMarkovChain.createMany({
-      data: batch,
-    });
-    console.log(
-      `   ✓ 已导入 ${Math.min(i + batchSize, majorMarkovChains.length)}/${majorMarkovChains.length} 条专业马尔可夫链`
-    );
+  // 去除id字段以避免冲突，让Prisma自动生成新的ID
+  const chainsWithoutId = majorMarkovChains.map(
+    (chain: Record<string, unknown>) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { id, ...chainData } = chain;
+      return chainData;
+    }
+  );
+
+  // 使用逐个插入以便处理重复数据
+  let successCount = 0;
+  let skipCount = 0;
+  const totalCount = chainsWithoutId.length;
+
+  for (let i = 0; i < chainsWithoutId.length; i++) {
+    const chainData = chainsWithoutId[i];
+
+    try {
+      await prisma.majorMarkovChain.create({
+        data: chainData,
+      });
+      successCount++;
+    } catch {
+      skipCount++;
+      // 静默跳过重复数据，避免日志过多
+    }
+
+    // 每1000条显示进度
+    if ((i + 1) % 1000 === 0 || i === chainsWithoutId.length - 1) {
+      console.log(
+        `   ✓ 已处理 ${i + 1}/${totalCount} 条专业马尔可夫链 (成功: ${successCount}, 跳过重复: ${skipCount})`
+      );
+    }
   }
 
-  stats.majorMarkovChains = majorMarkovChains.length;
+  stats.majorMarkovChains = successCount;
+  console.log(
+    `   ✅ 导入完成: 成功导入 ${successCount} 条，跳过重复 ${skipCount} 条`
+  );
 }
 
 // 执行导入

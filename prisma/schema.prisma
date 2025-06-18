@@ -6,14 +6,14 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
 // 毕业设计题目表
 model GraduationTopic {
   id          String   @id @default(cuid())
-  title       String   @unique
+  title       String   @unique @db.VarChar(300)
   school      String?
   major       String?
   year        Int?

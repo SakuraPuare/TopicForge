@@ -172,12 +172,10 @@ mysql -u root -p
 
 -- 创建数据库
 CREATE DATABASE topicforge_production CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE DATABASE topicforge_shadow CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- 创建用户（可选）
 CREATE USER 'topicforge'@'localhost' IDENTIFIED BY 'your_secure_password';
 GRANT ALL PRIVILEGES ON topicforge_production.* TO 'topicforge'@'localhost';
-GRANT ALL PRIVILEGES ON topicforge_shadow.* TO 'topicforge'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
@@ -196,7 +194,6 @@ nano .env.production
 ```env
 NODE_ENV=production
 DATABASE_URL="mysql://topicforge:your_secure_password@localhost:3306/topicforge_production"
-SHADOW_DATABASE_URL="mysql://topicforge:your_secure_password@localhost:3306/topicforge_shadow"
 NEXTAUTH_URL=https://your-domain.com
 NEXTAUTH_SECRET=your-production-secret-key-min-32-chars
 API_BASE_URL=https://your-domain.com
