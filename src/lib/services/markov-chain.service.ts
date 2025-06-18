@@ -76,33 +76,39 @@ export class MarkovChainService {
   }
 
   /**
-   * 训练马尔科夫链（支持专业分类）
-   * @param topics 已处理的题目数据
+   * 训练马尔科夫链模型
+   * @param topics 处理过的主题数据
    */
   async train(topics: (ProcessedTopic & { major?: string })[]): Promise<void> {
-    console.log(`开始训练马尔科夫链，共 ${topics.length} 个样本...`);
+    console.log(`开始训练马尔科夫链模型，共 ${topics.length} 个样本`);
 
-    // 处理空训练数据
-    if (!topics || topics.length === 0) {
-      console.log('没有训练数据，清空现有模型');
-      this.clearModels();
+    // 重置模型
+    this.clearModels();
+
+    if (topics.length === 0) {
+      console.warn('没有训练数据，跳过马尔科夫链训练');
       return;
     }
-
-    this.clearModels();
 
     // 按专业分组
     const topicsByMajor = this.groupTopicsByMajor(topics);
 
     // 训练通用模型
-    const validTopics = topics.filter(topic => topic.quality >= 0.3);
-    this.trainGeneralModel(validTopics);
+    console.log('训练通用马尔科夫链模型...');
+    this.trainGeneralModel(topics);
 
     // 训练专业特定模型
+    console.log('训练专业特定马尔科夫链模型...');
     await this.trainMajorSpecificModels(topicsByMajor);
 
-    // 保存到数据库
-    await this.saveToDatabase();
+    console.log('马尔科夫链模型训练完成');
+    console.log(`- 通用模型状态数: ${this.transitionTable.size}`);
+    console.log(`- 专业特定模型数: ${this.majorSpecificChains.size}`);
+
+    // 输出各专业模型统计
+    this.majorSpecificChains.forEach((chain, major) => {
+      console.log(`  - ${major}: ${chain.transitionTable.size} 个状态`);
+    });
   }
 
   /**
@@ -140,7 +146,7 @@ export class MarkovChainService {
    */
   private trainGeneralModel(topics: ProcessedTopic[]): void {
     topics.forEach(topic => {
-      const tokens = textProcessor.tokenize(topic.title);
+      const tokens = textProcessor.tokenize(topic.cleanTitle);
 
       // 使用滑动窗口构建状态转移表
       for (let i = 0; i < tokens.length - 1; i++) {
@@ -176,7 +182,7 @@ export class MarkovChainService {
       const chain = this.majorSpecificChains.get(major)!;
 
       topics.forEach(topic => {
-        const tokens = textProcessor.tokenize(topic.title);
+        const tokens = textProcessor.tokenize(topic.cleanTitle);
 
         // 记录开始和结束词
         if (tokens.length > 0) {
@@ -330,72 +336,74 @@ export class MarkovChainService {
   clear(): void {
     this.transitionTable.clear();
     this.majorSpecificChains.clear();
-    this.majorStartTokensCache.clear();
-    this.majorEndTokensCache.clear();
   }
 
   /**
-   * 从数据库加载模型
+   * 从数据库加载已训练的模型
    */
   async loadFromDatabase(): Promise<void> {
     try {
+      console.log('从数据库加载马尔科夫链模型...');
+
+      // 清除现有模型
+      this.clearModels();
+
       // 加载通用马尔科夫链
       const generalChains = await prisma.markovChain.findMany();
-      this.transitionTable.clear();
 
       generalChains.forEach(chain => {
         if (!this.transitionTable.has(chain.currentWord)) {
           this.transitionTable.set(chain.currentWord, new Map());
         }
-        this.transitionTable
-          .get(chain.currentWord)!
-          .set(chain.nextWord, chain.frequency);
+
+        const nextWordMap = this.transitionTable.get(chain.currentWord)!;
+        nextWordMap.set(chain.nextWord, chain.frequency);
       });
 
-      // 加载专业特定的马尔科夫链
+      // 加载专业特定马尔科夫链
       const majorChains = await prisma.majorMarkovChain.findMany();
-      this.majorSpecificChains.clear();
 
-      const majorGroups = new Map<
+      const majorChainMap = new Map<
         string,
         Array<{ currentWord: string; nextWord: string; frequency: number }>
       >();
 
       majorChains.forEach(chain => {
-        if (!majorGroups.has(chain.major)) {
-          majorGroups.set(chain.major, []);
+        if (!majorChainMap.has(chain.major)) {
+          majorChainMap.set(chain.major, []);
         }
-        majorGroups.get(chain.major)!.push({
+        majorChainMap.get(chain.major)!.push({
           currentWord: chain.currentWord,
           nextWord: chain.nextWord,
           frequency: chain.frequency,
         });
       });
 
-      majorGroups.forEach((chains, major) => {
-        const majorChain: MajorSpecificChain = {
-          transitionTable: new Map(),
-          startTokens: new Set(),
-          endTokens: new Set(),
-        };
+      // 构建专业特定链
+      majorChainMap.forEach((chains, major) => {
+        const transitionTable = new Map<string, Map<string, number>>();
 
         chains.forEach(chain => {
-          if (!majorChain.transitionTable.has(chain.currentWord)) {
-            majorChain.transitionTable.set(chain.currentWord, new Map());
+          if (!transitionTable.has(chain.currentWord)) {
+            transitionTable.set(chain.currentWord, new Map());
           }
-          majorChain.transitionTable
-            .get(chain.currentWord)!
-            .set(chain.nextWord, chain.frequency);
+
+          const nextWordMap = transitionTable.get(chain.currentWord)!;
+          nextWordMap.set(chain.nextWord, chain.frequency);
         });
 
-        this.majorSpecificChains.set(major, majorChain);
+        this.majorSpecificChains.set(major, {
+          transitionTable,
+          startTokens: new Set(this.START_TOKENS),
+          endTokens: new Set(this.END_TOKENS),
+        });
       });
 
       console.log(
-        `✅ 从数据库加载模型成功: 通用状态${this.transitionTable.size}个, 专业特定模型${this.majorSpecificChains.size}个`
+        `✅ 模型加载成功: 通用状态${this.transitionTable.size}个, 专业模型${this.majorSpecificChains.size}个`
       );
     } catch (error) {
-      console.log('从数据库加载模型失败:', error);
+      console.error('从数据库加载模型失败:', error);
       throw error;
     }
   }
@@ -478,6 +486,19 @@ export class MarkovChainService {
     const results: string[] = [];
     let attempts = 0;
     const maxAttempts = count * 3;
+
+    // 确保有可用的转移表
+    if (
+      this.transitionTable.size === 0 &&
+      this.majorSpecificChains.size === 0
+    ) {
+      // 尝试从数据库加载
+      try {
+        await this.loadFromDatabase();
+      } catch (error) {
+        console.warn('无法加载模型:', error);
+      }
+    }
 
     while (results.length < count && attempts < maxAttempts) {
       attempts++;
@@ -574,9 +595,24 @@ export class MarkovChainService {
    * @returns 马尔科夫链统计信息
    */
   getStats(): MarkovStats {
-    const generalStateCount = this.transitionTable.size;
-    const majorSpecificStats = new Map<string, { stateCount: number }>();
+    const stateCount = this.transitionTable.size;
 
+    // 计算总转移次数
+    let totalTransitions = 0;
+    const vocabulary = new Set<string>();
+
+    this.transitionTable.forEach((nextWords, currentWord) => {
+      vocabulary.add(currentWord);
+      nextWords.forEach((frequency, nextWord) => {
+        vocabulary.add(nextWord);
+        totalTransitions += frequency;
+      });
+    });
+
+    const averageTransitionsPerState =
+      stateCount > 0 ? totalTransitions / stateCount : 0;
+
+    const majorSpecificStats = new Map<string, { stateCount: number }>();
     this.majorSpecificChains.forEach((chain, major) => {
       majorSpecificStats.set(major, {
         stateCount: chain.transitionTable.size,
@@ -584,7 +620,11 @@ export class MarkovChainService {
     });
 
     return {
-      generalStateCount,
+      stateCount,
+      totalTransitions,
+      averageTransitionsPerState,
+      vocabulary: Array.from(vocabulary),
+      generalStateCount: stateCount,
       majorSpecificStats: Object.fromEntries(majorSpecificStats),
     };
   }

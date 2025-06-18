@@ -22,15 +22,18 @@ export class TopicGeneratorService {
   private lastTrainingTime: Date | null = null;
 
   constructor() {
-    // 初始化时尝试加载已有模型
-    this.loadTrainedModel();
+    // 尝试加载已训练的模型
+    this.loadTrainedModel().catch(() => {
+      console.log('启动时未能加载训练模型，将在首次生成时重新训练');
+    });
   }
 
   /**
-   * 训练模型
+   * 训练模型（支持特定专业训练）
+   * @param major 专业名称，如果提供则只训练该专业
    * @param config 训练配置
    */
-  async trainModel(config: TrainingConfig = {}): Promise<void> {
+  async trainModel(major?: string, config: TrainingConfig = {}): Promise<void> {
     console.log('开始训练主题生成模型...');
 
     try {
@@ -44,16 +47,36 @@ export class TopicGeneratorService {
       await majorService.syncMajorInfoFromTopics();
 
       // 获取训练数据
-      const topics = await this.getTrainingData();
+      const topics = await this.getTrainingData(major);
       if (topics.length === 0) {
-        throw new Error('没有可用的训练数据，请先运行爬虫程序');
+        const errorMessage = major
+          ? `专业 "${major}" 没有可用的训练数据`
+          : '没有可用的训练数据，请先运行爬虫程序';
+        throw new Error(errorMessage);
+      }
+
+      // 如果指定了专业，额外检查该专业是否存在有效数据
+      if (major) {
+        const majorTopics = topics.filter(t => t.major === major);
+        if (majorTopics.length === 0) {
+          throw new Error(`专业 "${major}" 没有匹配的训练数据`);
+        }
       }
 
       // 处理文本数据
       const processedTopics = await this.processTrainingData(topics, config);
+      if (processedTopics.length === 0) {
+        const errorMessage = major
+          ? `专业 "${major}" 没有满足质量要求的训练数据`
+          : '没有满足质量要求的训练数据';
+        throw new Error(errorMessage);
+      }
 
       // 训练马尔科夫链
       await markovChainService.train(processedTopics);
+
+      // 保存到数据库
+      await markovChainService.saveToDatabase();
 
       // 保存训练结果
       await this.saveTrainingResults(topics, processedTopics);
@@ -84,9 +107,10 @@ export class TopicGeneratorService {
 
   /**
    * 获取训练数据
+   * @param major 可选的专业过滤器
    * @returns 原始题目数据
    */
-  private async getTrainingData(): Promise<
+  private async getTrainingData(major?: string): Promise<
     Array<{
       id: string;
       title: string;
@@ -95,9 +119,16 @@ export class TopicGeneratorService {
       year?: number | null;
     }>
   > {
+    const whereClause: { major?: string; processed?: boolean } = {};
+
+    // 如果指定了专业，添加过滤条件
+    if (major) {
+      whereClause.major = major;
+    }
+
     // 优先获取未处理的题目
     let topics = await prisma.graduationTopic.findMany({
-      where: { processed: false },
+      where: { ...whereClause, processed: false },
       select: {
         id: true,
         title: true,
@@ -107,12 +138,15 @@ export class TopicGeneratorService {
       },
     });
 
-    console.log(`获取到 ${topics.length} 个未处理的题目`);
+    console.log(
+      `获取到 ${topics.length} 个未处理的题目${major ? `（专业：${major}）` : ''}`
+    );
 
     // 如果没有未处理的题目，使用所有题目
     if (topics.length === 0) {
       console.log('没有未处理的题目，使用所有题目进行训练');
       topics = await prisma.graduationTopic.findMany({
+        where: whereClause,
         select: {
           id: true,
           title: true,
@@ -387,13 +421,17 @@ export class TopicGeneratorService {
 
     // 确保模型已训练
     if (!this.isModelTrained) {
-      await this.trainModel();
+      await this.loadTrainedModel();
+      if (!this.isModelTrained) {
+        await this.trainModel(params.major);
+      }
     }
 
     const config = {
       count: 5,
       algorithm: 'markov' as const,
       qualityThreshold: 0.15,
+      saveToHistory: true,
       ...params,
     };
 
@@ -401,6 +439,7 @@ export class TopicGeneratorService {
 
     let generatedTopics: string[] = [];
     let majorInfo: GenerationResult['majorInfo'];
+    let fallbackUsed = false;
 
     // 获取专业信息
     if (config.major) {
@@ -414,21 +453,36 @@ export class TopicGeneratorService {
       }
     }
 
-    // 根据算法生成题目
-    switch (config.algorithm) {
-      case 'markov':
-        generatedTopics = await this.generateWithMarkov(config);
-        break;
-      case 'template':
+    try {
+      // 根据算法生成题目
+      switch (config.algorithm) {
+        case 'markov':
+          generatedTopics = await this.generateWithMarkov(config);
+          break;
+        case 'template':
+          generatedTopics = await this.generateWithTemplate(config);
+          break;
+        case 'hybrid':
+          generatedTopics = await this.generateWithHybrid(config);
+          break;
+      }
+
+      // 如果马尔科夫生成失败或数量不足，启用fallback
+      if (config.algorithm === 'markov' && generatedTopics.length === 0) {
+        console.log('马尔科夫生成失败，fallback到模板生成');
         generatedTopics = await this.generateWithTemplate(config);
-        break;
-      case 'hybrid':
-        generatedTopics = await this.generateWithHybrid(config);
-        break;
+        fallbackUsed = true;
+      }
+    } catch (error) {
+      console.warn('生成失败，使用fallback策略:', error);
+      generatedTopics = await this.generateWithTemplate(config);
+      fallbackUsed = true;
     }
 
     // 保存生成历史
-    await this.saveGenerationHistory(generatedTopics, config);
+    if (config.saveToHistory) {
+      await this.saveGenerationHistory(generatedTopics, config);
+    }
 
     const endTime = Date.now();
     const generationTime = endTime - startTime;
@@ -444,8 +498,13 @@ export class TopicGeneratorService {
         totalGenerated: generatedTopics.length,
         validTopics: generatedTopics.length,
         averageQuality:
-          qualities.reduce((sum, q) => sum + q, 0) / qualities.length,
+          qualities.length > 0
+            ? qualities.reduce((sum, q) => sum + q, 0) / qualities.length
+            : 0,
         generationTime,
+        algorithm: config.algorithm,
+        major: config.major,
+        fallbackUsed,
       },
       algorithm: config.algorithm,
       params: config,
@@ -499,14 +558,25 @@ export class TopicGeneratorService {
   ): Promise<string[]> {
     const count = params.count || 5;
     const markovCount = Math.ceil(count / 2);
-    const templateCount = Math.floor(count / 2);
+    const templateCount = count - markovCount;
 
     const [markovTopics, templateTopics] = await Promise.all([
       this.generateWithMarkov({ ...params, count: markovCount }),
       this.generateWithTemplate({ ...params, count: templateCount }),
     ]);
 
-    return [...markovTopics, ...templateTopics].slice(0, count);
+    // 如果马尔科夫生成失败，用模板生成补充
+    const allTopics = [...markovTopics, ...templateTopics];
+    if (allTopics.length < count) {
+      const needMore = count - allTopics.length;
+      const moreTopics = await this.generateWithTemplate({
+        ...params,
+        count: needMore,
+      });
+      allTopics.push(...moreTopics);
+    }
+
+    return allTopics.slice(0, count);
   }
 
   /**
@@ -518,13 +588,31 @@ export class TopicGeneratorService {
     topics: string[],
     params: GenerationParams
   ): Promise<void> {
-    const data = topics.map(topic => ({
-      content: topic,
-      algorithm: params.algorithm || 'markov',
-      params: JSON.parse(JSON.stringify(params)),
-    }));
+    if (!topics || topics.length === 0) {
+      console.warn('没有题目需要保存到历史记录');
+      return;
+    }
 
-    await prisma.generatedTopic.createMany({ data });
+    try {
+      const data = topics.map(topic => ({
+        content: topic,
+        algorithm: params.algorithm || 'markov',
+        params: JSON.parse(JSON.stringify(params)),
+        createdAt: new Date(),
+      }));
+
+      console.log(`准备保存 ${data.length} 条生成历史记录`);
+
+      // 使用事务确保数据一致性
+      await prisma.$transaction(async tx => {
+        await tx.generatedTopic.createMany({ data });
+      });
+
+      console.log(`✅ 成功保存 ${data.length} 条生成历史记录`);
+    } catch (error) {
+      console.error('保存生成历史失败:', error);
+      throw error;
+    }
   }
 
   /**

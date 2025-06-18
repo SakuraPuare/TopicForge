@@ -2,7 +2,8 @@
  * 主题生成集成测试
  */
 
-import { topicGeneratorService } from '../../src/lib/services';
+import { describe, test, expect, beforeEach } from '@jest/globals';
+import { topicGeneratorService } from '../../src/lib/services/topic-generator.service';
 import { prisma } from './setup';
 
 describe('TopicGeneration Integration', () => {
@@ -14,7 +15,7 @@ describe('TopicGeneration Integration', () => {
 
   describe('generateTopics', () => {
     test('应该生成马尔科夫链题目', async () => {
-      // 先插入一些训练数据
+      // 插入训练数据
       await prisma.graduationTopic.createMany({
         data: [
           {
@@ -114,8 +115,9 @@ describe('TopicGeneration Integration', () => {
 
       expect(result.topics).toHaveLength(2);
 
-      // 验证生成历史已保存
+      // 验证生成历史已保存 - 使用同一个prisma实例
       const savedTopics = await prisma.generatedTopic.findMany();
+      console.log('查询到的生成历史记录数量:', savedTopics.length);
       expect(savedTopics).toHaveLength(2);
 
       savedTopics.forEach(topic => {
@@ -127,7 +129,7 @@ describe('TopicGeneration Integration', () => {
 
   describe('getSystemStats', () => {
     test('应该返回系统统计信息', async () => {
-      // 插入测试数据
+      // 插入测试数据 - 使用同一个prisma实例
       await prisma.graduationTopic.createMany({
         data: [
           { title: '测试题目1', processed: true },
@@ -141,6 +143,16 @@ describe('TopicGeneration Integration', () => {
           algorithm: 'markov',
         },
       });
+
+      // 验证数据已插入
+      const topicCount = await prisma.graduationTopic.count();
+      const generatedCount = await prisma.generatedTopic.count();
+      console.log(
+        '插入验证 - 题目数量:',
+        topicCount,
+        '生成记录数量:',
+        generatedCount
+      );
 
       const stats = await topicGeneratorService.getSystemStats();
 
@@ -175,7 +187,9 @@ describe('TopicGeneration Integration', () => {
       });
 
       await expect(
-        topicGeneratorService.trainModel('计算机科学与技术')
+        topicGeneratorService.trainModel('计算机科学与技术', {
+          forceRetrain: true,
+        })
       ).resolves.not.toThrow();
 
       // 验证模型训练后可以生成题目
@@ -190,7 +204,7 @@ describe('TopicGeneration Integration', () => {
 
     test('应该处理没有数据的专业', async () => {
       await expect(
-        topicGeneratorService.trainModel('不存在的专业')
+        topicGeneratorService.trainModel('不存在的专业', { forceRetrain: true })
       ).rejects.toThrow();
     });
   });

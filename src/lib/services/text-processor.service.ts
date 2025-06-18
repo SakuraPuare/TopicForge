@@ -102,6 +102,10 @@ export class TextProcessorService {
    * @returns 清洗后的文本
    */
   cleanText(text: string): string {
+    if (!text || typeof text !== 'string') {
+      return '';
+    }
+
     return text
       .replace(/<[^>]*>/g, '') // 移除HTML标签
       .replace(/\s+/g, ' ') // 移除多余的空白字符

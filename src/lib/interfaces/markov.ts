@@ -56,8 +56,12 @@ export interface GenerationOptions {
  * 马尔科夫链统计信息接口
  */
 export interface MarkovStats {
-  generalStateCount: number;
-  majorSpecificStats: {
+  stateCount: number;
+  totalTransitions: number;
+  averageTransitionsPerState: number;
+  vocabulary: string[];
+  generalStateCount?: number;
+  majorSpecificStats?: {
     [key: string]: {
       stateCount: number;
     };

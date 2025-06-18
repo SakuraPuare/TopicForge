@@ -10,6 +10,8 @@ export interface GenerationParams {
   algorithm?: 'markov' | 'template' | 'hybrid'; // 生成算法
   config?: Partial<MarkovConfig>; // 马尔科夫配置
   qualityThreshold?: number; // 质量阈值
+  saveToHistory?: boolean; // 是否保存到历史记录
+  minQuality?: number; // 最低质量要求
 }
 
 /**
@@ -22,6 +24,9 @@ export interface GenerationResult {
     validTopics: number;
     averageQuality: number;
     generationTime: number;
+    algorithm?: string;
+    major?: string;
+    fallbackUsed?: boolean;
   };
   algorithm: string;
   params: GenerationParams;

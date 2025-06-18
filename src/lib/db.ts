@@ -5,8 +5,11 @@ declare global {
   var prisma: PrismaClient | undefined;
 }
 
-const prisma = globalThis.prisma || new PrismaClient();
+// 在测试环境中，优先使用全局设置的prisma实例（来自测试设置）
+const prisma = global.prisma || globalThis.prisma || new PrismaClient();
 
-if (process.env.NODE_ENV !== 'production') globalThis.prisma = prisma;
+if (process.env.NODE_ENV !== 'production') {
+  globalThis.prisma = prisma;
+}
 
 export default prisma;
