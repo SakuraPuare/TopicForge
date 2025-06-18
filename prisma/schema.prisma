@@ -75,3 +75,33 @@ model KeywordStats {
 
   @@map("keyword_stats")
 }
+
+// 专业信息表
+model Major {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  displayName     String?  // 显示名称
+  category        String?  // 专业类别
+  description     String?  // 专业描述
+  sampleCount     Int      @default(0) // 样本数量
+  hasModel        Boolean  @default(false) // 是否有训练模型
+  lastTrainingAt  DateTime? // 最后训练时间
+  qualityStats    Json?    // 质量统计信息
+  keywords        Json?    // 专业关键词
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("majors")
+}
+
+// 专业特定的马尔科夫链表
+model MajorMarkovChain {
+  id          String @id @default(cuid())
+  major       String
+  currentWord String
+  nextWord    String
+  frequency   Int    @default(1)
+
+  @@unique([major, currentWord, nextWord])
+  @@map("major_markov_chains")
+}

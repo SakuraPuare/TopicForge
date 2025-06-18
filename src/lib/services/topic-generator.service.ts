@@ -1,0 +1,634 @@
+import { PrismaClient } from '@prisma/client';
+import { textProcessor } from './text-processor.service';
+import { markovChainService } from './markov-chain.service';
+import { templateGenerator } from './template-generator.service';
+import { majorService } from './major.service';
+import { ProcessedTopic } from '../interfaces/text-processing';
+import {
+  GenerationParams,
+  GenerationResult,
+  MajorInfo,
+  TrainingConfig,
+} from '../interfaces/generation';
+import { MarkovStats } from '../interfaces/markov';
+
+const prisma = new PrismaClient();
+
+/**
+ * 主题生成器主服务类
+ */
+export class TopicGeneratorService {
+  private isModelTrained = false;
+  private lastTrainingTime: Date | null = null;
+
+  constructor() {
+    // 初始化时尝试加载已有模型
+    this.loadTrainedModel();
+  }
+
+  /**
+   * 训练模型
+   * @param config 训练配置
+   */
+  async trainModel(config: TrainingConfig = {}): Promise<void> {
+    console.log('开始训练主题生成模型...');
+
+    try {
+      // 检查是否需要重新训练
+      if (!config.forceRetrain && this.shouldSkipTraining()) {
+        console.log('模型已在24小时内训练过，跳过重新训练');
+        return;
+      }
+
+      // 同步专业信息
+      await majorService.syncMajorInfoFromTopics();
+
+      // 获取训练数据
+      const topics = await this.getTrainingData();
+      if (topics.length === 0) {
+        throw new Error('没有可用的训练数据，请先运行爬虫程序');
+      }
+
+      // 处理文本数据
+      const processedTopics = await this.processTrainingData(topics, config);
+
+      // 训练马尔科夫链
+      await markovChainService.train(processedTopics);
+
+      // 保存训练结果
+      await this.saveTrainingResults(topics, processedTopics);
+
+      this.isModelTrained = true;
+      this.lastTrainingTime = new Date();
+
+      console.log('✅ 模型训练完成！');
+    } catch (error) {
+      console.error('训练模型时出错:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 检查是否应该跳过训练
+   * @returns 是否跳过
+   */
+  private shouldSkipTraining(): boolean {
+    if (!this.isModelTrained || !this.lastTrainingTime) {
+      return false;
+    }
+
+    const hoursSinceTraining =
+      (Date.now() - this.lastTrainingTime.getTime()) / (1000 * 60 * 60);
+    return hoursSinceTraining < 24;
+  }
+
+  /**
+   * 获取训练数据
+   * @returns 原始题目数据
+   */
+  private async getTrainingData(): Promise<
+    Array<{
+      id: string;
+      title: string;
+      major?: string | null;
+      school?: string | null;
+      year?: number | null;
+    }>
+  > {
+    // 优先获取未处理的题目
+    let topics = await prisma.graduationTopic.findMany({
+      where: { processed: false },
+      select: {
+        id: true,
+        title: true,
+        major: true,
+        school: true,
+        year: true,
+      },
+    });
+
+    console.log(`获取到 ${topics.length} 个未处理的题目`);
+
+    // 如果没有未处理的题目，使用所有题目
+    if (topics.length === 0) {
+      console.log('没有未处理的题目，使用所有题目进行训练');
+      topics = await prisma.graduationTopic.findMany({
+        select: {
+          id: true,
+          title: true,
+          major: true,
+          school: true,
+          year: true,
+        },
+      });
+    }
+
+    return topics;
+  }
+
+  /**
+   * 处理训练数据
+   * @param topics 原始题目
+   * @param config 训练配置
+   * @returns 处理后的题目
+   */
+  private async processTrainingData(
+    topics: Array<{
+      id: string;
+      title: string;
+      major?: string | null;
+    }>,
+    config: TrainingConfig
+  ): Promise<(ProcessedTopic & { major?: string })[]> {
+    console.log('开始处理训练数据...');
+
+    const titles = topics.map(t => t.title);
+    const majors = topics.map(t => t.major || undefined);
+
+    // 批量处理文本
+    const processedTopics = titles.map(
+      (title, index) => textProcessor.batchProcess([title], majors[index])[0]
+    );
+
+    // 添加专业信息
+    const enhancedTopics = processedTopics.map((topic, index) => ({
+      ...topic,
+      major: majors[index],
+    }));
+
+    // 过滤低质量题目
+    const qualityThreshold = config.qualityThreshold || 0.3;
+    const validTopics = enhancedTopics.filter(
+      topic => topic.quality >= qualityThreshold
+    );
+
+    console.log(
+      `文本处理完成，有效题目: ${validTopics.length}/${enhancedTopics.length}，` +
+        `平均质量分数: ${(validTopics.reduce((sum, t) => sum + t.quality, 0) / validTopics.length).toFixed(2)}`
+    );
+
+    // 保存处理结果
+    await this.saveProcessedData(topics, enhancedTopics, config);
+
+    return validTopics;
+  }
+
+  /**
+   * 保存处理后的数据
+   * @param originalTopics 原始题目
+   * @param processedTopics 处理后的题目
+   * @param config 配置
+   */
+  private async saveProcessedData(
+    originalTopics: Array<{ id: string; title: string }>,
+    processedTopics: ProcessedTopic[],
+    config: TrainingConfig
+  ): Promise<void> {
+    console.log('保存处理后的数据...');
+
+    const batchSize = config.batchSize || 1000;
+
+    // 删除旧的分词结果
+    const topicIds = originalTopics.map(t => t.id);
+    await prisma.tokenizedWord.deleteMany({
+      where: { topicId: { in: topicIds } },
+    });
+
+    // 准备分词数据
+    const allTokenizedWords: Array<{
+      topicId: string;
+      word: string;
+      position: number;
+      frequency: number;
+    }> = [];
+
+    for (let i = 0; i < originalTopics.length; i++) {
+      const original = originalTopics[i];
+      const processed = processedTopics[i];
+
+      processed.tokens.forEach((word, position) => {
+        allTokenizedWords.push({
+          topicId: original.id,
+          word,
+          position,
+          frequency: 1,
+        });
+      });
+    }
+
+    // 批量插入分词结果
+    console.log(`批量插入 ${allTokenizedWords.length} 个分词结果...`);
+    for (let i = 0; i < allTokenizedWords.length; i += batchSize) {
+      const batch = allTokenizedWords.slice(i, i + batchSize);
+      await prisma.tokenizedWord.createMany({
+        data: batch,
+      });
+
+      const progress = Math.min(i + batchSize, allTokenizedWords.length);
+      console.log(
+        `分词进度: ${progress}/${allTokenizedWords.length} (${((progress / allTokenizedWords.length) * 100).toFixed(1)}%)`
+      );
+    }
+
+    // 更新题目关键词
+    const updateBatchSize = 500;
+    for (let i = 0; i < originalTopics.length; i += updateBatchSize) {
+      const batch = originalTopics.slice(i, i + updateBatchSize);
+
+      await prisma.$transaction(
+        batch.map((original, idx) =>
+          prisma.graduationTopic.update({
+            where: { id: original.id },
+            data: {
+              keywords: JSON.stringify(processedTopics[i + idx].keywords),
+              processed: true,
+            },
+          })
+        )
+      );
+
+      const progress = Math.min(i + updateBatchSize, originalTopics.length);
+      console.log(
+        `关键词更新进度: ${progress}/${originalTopics.length} (${((progress / originalTopics.length) * 100).toFixed(1)}%)`
+      );
+    }
+
+    console.log('✅ 处理后的数据保存完成');
+  }
+
+  /**
+   * 保存训练结果
+   * @param originalTopics 原始题目
+   * @param processedTopics 处理后的题目
+   */
+  private async saveTrainingResults(
+    originalTopics: Array<{ id: string; title: string; major?: string | null }>,
+    processedTopics: (ProcessedTopic & { major?: string })[]
+  ): Promise<void> {
+    console.log('保存训练结果...');
+
+    // 更新关键词统计
+    await this.updateKeywordStats(processedTopics);
+
+    // 更新专业训练状态
+    const majorStats = this.calculateMajorStats(processedTopics);
+    for (const [major, stats] of majorStats.entries()) {
+      await majorService.updateMajorInfo(major, {
+        sampleCount: stats.sampleCount,
+        hasModel: stats.sampleCount >= 10,
+        lastTrainingAt: new Date(),
+        qualityStats: stats.qualityStats,
+      });
+    }
+
+    console.log('✅ 训练结果保存完成');
+  }
+
+  /**
+   * 计算专业统计信息
+   * @param topics 处理后的题目
+   * @returns 专业统计映射
+   */
+  private calculateMajorStats(
+    topics: (ProcessedTopic & { major?: string })[]
+  ): Map<
+    string,
+    {
+      sampleCount: number;
+      qualityStats: { high: number; medium: number; low: number };
+    }
+  > {
+    const stats = new Map<
+      string,
+      {
+        sampleCount: number;
+        qualityStats: { high: number; medium: number; low: number };
+      }
+    >();
+
+    for (const topic of topics) {
+      const major = topic.major || '未分类';
+
+      if (!stats.has(major)) {
+        stats.set(major, {
+          sampleCount: 0,
+          qualityStats: { high: 0, medium: 0, low: 0 },
+        });
+      }
+
+      const majorStats = stats.get(major)!;
+      majorStats.sampleCount++;
+
+      if (topic.quality >= 0.6) {
+        majorStats.qualityStats.high++;
+      } else if (topic.quality >= 0.3) {
+        majorStats.qualityStats.medium++;
+      } else {
+        majorStats.qualityStats.low++;
+      }
+    }
+
+    return stats;
+  }
+
+  /**
+   * 更新关键词统计
+   * @param processedTopics 处理后的题目
+   */
+  private async updateKeywordStats(
+    processedTopics: (ProcessedTopic & { major?: string })[]
+  ): Promise<void> {
+    console.log('更新关键词统计...');
+
+    const keywordCounts = new Map<string, number>();
+
+    processedTopics.forEach(topic => {
+      topic.keywords.forEach(keyword => {
+        keywordCounts.set(keyword, (keywordCounts.get(keyword) || 0) + 1);
+      });
+    });
+
+    console.log(`准备更新 ${keywordCounts.size} 个关键词的统计信息...`);
+
+    const updates = Array.from(keywordCounts.entries());
+    const batchSize = 500;
+
+    for (let i = 0; i < updates.length; i += batchSize) {
+      const batch = updates.slice(i, i + batchSize);
+
+      await prisma.$transaction(
+        batch.map(([keyword, frequency]) =>
+          prisma.keywordStats.upsert({
+            where: { keyword },
+            update: { frequency, updatedAt: new Date() },
+            create: { keyword, frequency },
+          })
+        )
+      );
+
+      const progress = Math.min(i + batchSize, updates.length);
+      console.log(
+        `关键词统计进度: ${progress}/${updates.length} (${((progress / updates.length) * 100).toFixed(1)}%)`
+      );
+    }
+
+    console.log('✅ 关键词统计更新完成');
+  }
+
+  /**
+   * 生成主题
+   * @param params 生成参数
+   * @returns 生成结果
+   */
+  async generateTopics(
+    params: GenerationParams = {}
+  ): Promise<GenerationResult> {
+    const startTime = Date.now();
+
+    // 确保模型已训练
+    if (!this.isModelTrained) {
+      await this.trainModel();
+    }
+
+    const config = {
+      count: 5,
+      algorithm: 'markov' as const,
+      qualityThreshold: 0.15,
+      ...params,
+    };
+
+    console.log(`开始生成 ${config.count} 个题目，算法: ${config.algorithm}`);
+
+    let generatedTopics: string[] = [];
+    let majorInfo: GenerationResult['majorInfo'];
+
+    // 获取专业信息
+    if (config.major) {
+      const info = await majorService.getMajorInfo(config.major);
+      if (info) {
+        majorInfo = {
+          major: config.major,
+          sampleCount: info.sampleCount,
+          hasSpecificModel: info.hasModel,
+        };
+      }
+    }
+
+    // 根据算法生成题目
+    switch (config.algorithm) {
+      case 'markov':
+        generatedTopics = await this.generateWithMarkov(config);
+        break;
+      case 'template':
+        generatedTopics = await this.generateWithTemplate(config);
+        break;
+      case 'hybrid':
+        generatedTopics = await this.generateWithHybrid(config);
+        break;
+    }
+
+    // 保存生成历史
+    await this.saveGenerationHistory(generatedTopics, config);
+
+    const endTime = Date.now();
+    const generationTime = endTime - startTime;
+
+    // 计算统计信息
+    const qualities = generatedTopics.map(
+      topic => textProcessor.batchProcess([topic])[0].quality
+    );
+
+    const result: GenerationResult = {
+      topics: generatedTopics,
+      stats: {
+        totalGenerated: generatedTopics.length,
+        validTopics: generatedTopics.length,
+        averageQuality:
+          qualities.reduce((sum, q) => sum + q, 0) / qualities.length,
+        generationTime,
+      },
+      algorithm: config.algorithm,
+      params: config,
+      majorInfo,
+    };
+
+    console.log(
+      `生成完成! 耗时: ${generationTime}ms, 平均质量: ${result.stats.averageQuality.toFixed(2)}`
+    );
+
+    return result;
+  }
+
+  /**
+   * 使用马尔科夫链生成
+   * @param params 生成参数
+   * @returns 生成的题目
+   */
+  private async generateWithMarkov(
+    params: GenerationParams
+  ): Promise<string[]> {
+    return markovChainService.generate({
+      count: params.count || 5,
+      major: params.major,
+      qualityThreshold: params.qualityThreshold,
+    });
+  }
+
+  /**
+   * 使用模板生成
+   * @param params 生成参数
+   * @returns 生成的题目
+   */
+  private async generateWithTemplate(
+    params: GenerationParams
+  ): Promise<string[]> {
+    return templateGenerator.generate({
+      count: params.count || 5,
+      major: params.major,
+      qualityThreshold: params.qualityThreshold,
+    });
+  }
+
+  /**
+   * 使用混合算法生成
+   * @param params 生成参数
+   * @returns 生成的题目
+   */
+  private async generateWithHybrid(
+    params: GenerationParams
+  ): Promise<string[]> {
+    const count = params.count || 5;
+    const markovCount = Math.ceil(count / 2);
+    const templateCount = Math.floor(count / 2);
+
+    const [markovTopics, templateTopics] = await Promise.all([
+      this.generateWithMarkov({ ...params, count: markovCount }),
+      this.generateWithTemplate({ ...params, count: templateCount }),
+    ]);
+
+    return [...markovTopics, ...templateTopics].slice(0, count);
+  }
+
+  /**
+   * 保存生成历史
+   * @param topics 生成的题目
+   * @param params 生成参数
+   */
+  private async saveGenerationHistory(
+    topics: string[],
+    params: GenerationParams
+  ): Promise<void> {
+    const data = topics.map(topic => ({
+      content: topic,
+      algorithm: params.algorithm || 'markov',
+      params: JSON.parse(JSON.stringify(params)),
+    }));
+
+    await prisma.generatedTopic.createMany({ data });
+  }
+
+  /**
+   * 加载已训练的模型
+   */
+  private async loadTrainedModel(): Promise<void> {
+    try {
+      await markovChainService.loadFromDatabase();
+      this.isModelTrained = true;
+      this.lastTrainingTime = new Date();
+    } catch (error) {
+      console.log('加载模型失败，需要重新训练:', error);
+    }
+  }
+
+  /**
+   * 获取可用专业列表
+   * @returns 专业信息数组
+   */
+  async getAvailableMajors(): Promise<MajorInfo[]> {
+    return majorService.getAvailableMajors();
+  }
+
+  /**
+   * 获取指定专业的样本数量
+   * @param major 专业名称
+   * @returns 样本数量
+   */
+  async getMajorSampleCount(major: string): Promise<number> {
+    const info = await majorService.getMajorInfo(major);
+    return info?.sampleCount || 0;
+  }
+
+  /**
+   * 检查专业是否有足够的样本
+   * @param major 专业名称
+   * @param minSamples 最小样本数
+   * @returns 是否有足够样本
+   */
+  async hasSufficientSamples(
+    major: string,
+    minSamples: number = 10
+  ): Promise<boolean> {
+    return majorService.hasSufficientSamples(major, minSamples);
+  }
+
+  /**
+   * 获取系统统计信息
+   * @returns 统计信息
+   */
+  async getSystemStats(): Promise<{
+    topicStats: {
+      total: number;
+      processed: number;
+      unprocessed: number;
+    };
+    markovStats: MarkovStats;
+    templateStats: {
+      totalTemplates: number;
+      generalTemplates: number;
+      majorSpecificTemplates: Record<string, number>;
+      vocabularySize: number;
+    };
+    keywordStats: {
+      topKeywords: Array<{ keyword: string; frequency: number }>;
+    };
+    generationStats: {
+      totalGenerated: number;
+    };
+    majorStats: MajorInfo[];
+  }> {
+    const [topicCount, processedCount, generatedCount, topKeywords, majors] =
+      await Promise.all([
+        prisma.graduationTopic.count(),
+        prisma.graduationTopic.count({ where: { processed: true } }),
+        prisma.generatedTopic.count(),
+        prisma.keywordStats.findMany({
+          orderBy: { frequency: 'desc' },
+          take: 10,
+        }),
+        majorService.getAvailableMajors(),
+      ]);
+
+    return {
+      topicStats: {
+        total: topicCount,
+        processed: processedCount,
+        unprocessed: topicCount - processedCount,
+      },
+      markovStats: markovChainService.getStats(),
+      templateStats: templateGenerator.getStats(),
+      keywordStats: {
+        topKeywords: topKeywords.map(k => ({
+          keyword: k.keyword,
+          frequency: k.frequency,
+        })),
+      },
+      generationStats: {
+        totalGenerated: generatedCount,
+      },
+      majorStats: majors,
+    };
+  }
+}
+
+// 导出单例实例
+export const topicGeneratorService = new TopicGeneratorService();
