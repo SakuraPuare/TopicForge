@@ -1,5 +1,6 @@
 import { Metadata } from 'next';
 import { Suspense } from 'react';
+import prisma from '../../lib/db';
 import { dataService } from '../../lib/services';
 import GenerateClient from './generate-client';
 import History from './history';
@@ -12,10 +13,54 @@ export const metadata: Metadata = {
   description: '使用AI技术为您的毕业设计生成创新性选题',
 };
 
+async function getMajorsAndYears() {
+  const [majors, years] = await Promise.all([
+    prisma.graduationTopic.findMany({
+      where: {
+        major: {
+          not: null,
+        },
+      },
+      select: {
+        major: true,
+      },
+      distinct: ['major'],
+    }),
+    prisma.graduationTopic.findMany({
+      where: {
+        year: {
+          not: null,
+        },
+      },
+      select: {
+        year: true,
+      },
+      distinct: ['year'],
+      orderBy: {
+        year: 'desc',
+      },
+    }),
+  ]);
+
+  const majorList = majors
+    .map(item => item.major)
+    .filter((major): major is string => major !== null && major !== '')
+    .sort();
+
+  const yearList = years
+    .map(item => item.year)
+    .filter((year): year is number => year !== null)
+    .sort((a, b) => b - a);
+
+  return { majors: majorList, years: yearList };
+}
+
 export default async function GeneratePage() {
-  // 直接在服务器端获取数据
-  const { majors, years } = await dataService.getMajorsAndYears();
-  const recentSessions = await dataService.getRecentGenerationSessions(10);
+  // 使用直接的数据库查询方式获取数据，参考 topics/page.tsx 的实现
+  const [{ majors, years }, recentSessions] = await Promise.all([
+    getMajorsAndYears(),
+    dataService.getRecentGenerationSessions(10),
+  ]);
 
   return (
     <div className='min-h-screen'>
