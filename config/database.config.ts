@@ -17,14 +17,21 @@ export function getDatabaseConfig(): DatabaseConfig {
   const nodeEnv = process.env.NODE_ENV || 'development';
 
   if (nodeEnv === 'production') {
+    // 生产环境必须使用环境变量配置
+    const databaseUrl = process.env.DATABASE_URL;
+    const shadowUrl = process.env.SHADOW_DATABASE_URL;
+
+    if (!databaseUrl) {
+      throw new Error(
+        '生产环境必须设置 DATABASE_URL 环境变量。' +
+          '格式: mysql://username:password@host:port/database'
+      );
+    }
+
     return {
       provider: 'mysql',
-      url:
-        process.env.DATABASE_URL ||
-        'mysql://root:password@localhost:3306/topicforge_production',
-      shadowUrl:
-        process.env.SHADOW_DATABASE_URL ||
-        'mysql://root:password@localhost:3306/topicforge_shadow',
+      url: databaseUrl,
+      shadowUrl: shadowUrl,
       migrationPath: './prisma/migrations/production',
     };
   }
@@ -47,11 +54,14 @@ export const developmentConfig: DatabaseConfig = {
 };
 
 /**
- * 生产环境配置
+ * 生产环境配置示例（实际应使用环境变量）
  */
 export const productionConfig: DatabaseConfig = {
   provider: 'mysql',
-  url: 'mysql://root:password@localhost:3306/topicforge_production',
-  shadowUrl: 'mysql://root:password@localhost:3306/topicforge_shadow',
+  url:
+    process.env.DATABASE_URL || 'mysql://username:password@host:port/database',
+  shadowUrl:
+    process.env.SHADOW_DATABASE_URL ||
+    'mysql://username:password@host:port/shadow_database',
   migrationPath: './prisma/migrations/production',
 };

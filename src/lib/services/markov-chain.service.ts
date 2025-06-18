@@ -435,9 +435,21 @@ export class MarkovChainService {
       });
 
       if (generalChainData.length > 0) {
-        await prisma.markovChain.createMany({
-          data: generalChainData,
-        });
+        // 使用 upsert 逐个插入以处理潜在的重复项
+        for (const chainItem of generalChainData) {
+          await prisma.markovChain.upsert({
+            where: {
+              currentWord_nextWord: {
+                currentWord: chainItem.currentWord,
+                nextWord: chainItem.nextWord,
+              },
+            },
+            create: chainItem,
+            update: {
+              frequency: chainItem.frequency,
+            },
+          });
+        }
       }
 
       // 保存专业特定的马尔科夫链
@@ -448,23 +460,58 @@ export class MarkovChainService {
         frequency: number;
       }> = [];
 
+      // 使用 Map 去重，以防止内存中的重复数据
+      const uniqueMajorChains = new Map<
+        string,
+        {
+          major: string;
+          currentWord: string;
+          nextWord: string;
+          frequency: number;
+        }
+      >();
+
       this.majorSpecificChains.forEach((chain, major) => {
         chain.transitionTable.forEach((nextWords, currentWord) => {
           nextWords.forEach((frequency, nextWord) => {
-            majorChainData.push({
-              major,
-              currentWord,
-              nextWord,
-              frequency,
-            });
+            const key = `${major}:${currentWord}:${nextWord}`;
+            const existing = uniqueMajorChains.get(key);
+
+            if (existing) {
+              // 如果已存在，累加频率
+              existing.frequency += frequency;
+            } else {
+              uniqueMajorChains.set(key, {
+                major,
+                currentWord,
+                nextWord,
+                frequency,
+              });
+            }
           });
         });
       });
 
+      // 转换为数组
+      majorChainData.push(...uniqueMajorChains.values());
+
       if (majorChainData.length > 0) {
-        await prisma.majorMarkovChain.createMany({
-          data: majorChainData,
-        });
+        // 使用 upsert 逐个插入以处理潜在的重复项
+        for (const chainItem of majorChainData) {
+          await prisma.majorMarkovChain.upsert({
+            where: {
+              major_currentWord_nextWord: {
+                major: chainItem.major,
+                currentWord: chainItem.currentWord,
+                nextWord: chainItem.nextWord,
+              },
+            },
+            create: chainItem,
+            update: {
+              frequency: chainItem.frequency,
+            },
+          });
+        }
       }
 
       console.log(
