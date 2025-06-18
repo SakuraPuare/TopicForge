@@ -29,7 +29,11 @@
     "db:migrate": "npx prisma migrate dev",
     "db:deploy": "npx prisma migrate deploy",
     "db:studio": "npx prisma studio",
-    "db:reset": "npx prisma migrate reset"
+    "db:reset": "npx prisma migrate reset",
+    "data:export": "npx tsx scripts/export-database.ts",
+    "data:import": "npx tsx scripts/import-seeds.ts",
+    "data:import:full": "npx tsx scripts/import-seeds.ts --full",
+    "data:import:force": "npx tsx scripts/import-seeds.ts --force"
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",

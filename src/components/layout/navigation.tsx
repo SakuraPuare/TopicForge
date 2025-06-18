@@ -83,7 +83,7 @@ export function Navigation() {
             <ModeToggle />
             <Button variant='ghost' size='sm' asChild>
               <Link
-                href='https://github.com/sakurapuare/TopicForge'
+                href='https://github.com/SakuraPuare/TopicForge'
                 target='_blank'
                 rel='noopener noreferrer'
                 className='hidden sm:flex'
