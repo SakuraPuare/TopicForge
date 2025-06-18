@@ -146,7 +146,7 @@ export class MarkovChainService {
    */
   private trainGeneralModel(topics: ProcessedTopic[]): void {
     topics.forEach(topic => {
-      const tokens = textProcessor.tokenize(topic.cleanTitle);
+      const tokens = topic.tokens; // 直接使用已经处理好的tokens
 
       // 使用滑动窗口构建状态转移表
       for (let i = 0; i < tokens.length - 1; i++) {
@@ -182,7 +182,7 @@ export class MarkovChainService {
       const chain = this.majorSpecificChains.get(major)!;
 
       topics.forEach(topic => {
-        const tokens = textProcessor.tokenize(topic.cleanTitle);
+        const tokens = topic.tokens; // 直接使用已经处理好的tokens
 
         // 记录开始和结束词
         if (tokens.length > 0) {
