@@ -20,7 +20,16 @@
     "test:coverage": "jest --coverage",
     "test:ci": "jest --ci --coverage --watchAll=false",
     "test:integration": "jest --testPathPatterns=integration",
-    "test:unit": "jest --testPathPatterns=unit"
+    "test:unit": "jest --testPathPatterns=unit",
+    "setup:db": "npx tsx scripts/setup-database.ts",
+    "setup:db:dev": "npm run setup:db development",
+    "setup:db:prod": "npm run setup:db production",
+    "db:generate": "npx prisma generate",
+    "db:push": "npx prisma db push",
+    "db:migrate": "npx prisma migrate dev",
+    "db:deploy": "npx prisma migrate deploy",
+    "db:studio": "npx prisma studio",
+    "db:reset": "npx prisma migrate reset"
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",
