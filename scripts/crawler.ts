@@ -13,7 +13,7 @@ async function main() {
     delay: 400, // 较短延迟
     retryAttempts: 5, // 更多重试次数
     adaptiveDelay: true, // 启用自适应延迟
-    pageSize: 1000, // 每页1000条数据
+    pageSize: 5000, // 每页1000条数据
   });
 
   console.log('🔧 高性能配置:');

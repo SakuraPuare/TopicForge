@@ -13,7 +13,7 @@ datasource db {
 // 毕业设计题目表
 model GraduationTopic {
   id          String   @id @default(cuid())
-  title       String
+  title       String   @unique
   school      String?
   major       String?
   year        Int?
