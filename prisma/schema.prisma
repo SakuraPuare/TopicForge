@@ -1,0 +1,77 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 毕业设计题目表
+model GraduationTopic {
+  id          String   @id @default(cuid())
+  title       String
+  school      String?
+  major       String?
+  year        Int?
+  keywords    String?  // JSON格式存储关键词数组
+  processed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联的分词结果
+  tokenizedWords TokenizedWord[]
+
+  @@map("graduation_topics")
+}
+
+// 分词结果表
+model TokenizedWord {
+  id        String @id @default(cuid())
+  topicId   String
+  word      String
+  position  Int
+  frequency Int    @default(1)
+
+  // 关联到题目
+  topic     GraduationTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@map("tokenized_words")
+}
+
+// 生成历史表
+model GeneratedTopic {
+  id        String   @id @default(cuid())
+  content   String
+  algorithm String   // 'markov', 'template', etc.
+  params    Json?    // 生成参数
+  rating    Int?     // 用户评分 1-5
+  createdAt DateTime @default(now())
+
+  @@map("generated_topics")
+}
+
+// 马尔科夫链状态表
+model MarkovChain {
+  id          String @id @default(cuid())
+  currentWord String
+  nextWord    String
+  frequency   Int    @default(1)
+
+  @@unique([currentWord, nextWord])
+  @@map("markov_chains")
+}
+
+// 关键词统计表
+model KeywordStats {
+  id        String   @id @default(cuid())
+  keyword   String   @unique
+  frequency Int      @default(1)
+  category  String?  // 专业类别
+  updatedAt DateTime @updatedAt
+
+  @@map("keyword_stats")
+}
