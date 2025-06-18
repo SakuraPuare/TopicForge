@@ -1,0 +1,30 @@
+{
+  "exportDate": "2025-06-18T12:38:52.893Z",
+  "version": "1.0.0",
+  "description": "TopicForge 数据库导出数据",
+  "stats": {
+    "graduationTopics": 25102,
+    "majors": 68,
+    "generatedTopics": 18,
+    "keywordStats": 5000,
+    "markovChains": 10000,
+    "majorMarkovChains": 10000
+  },
+  "files": {
+    "full": {
+      "graduation-topics.json": "完整的毕业设计题目数据 (25102 条)",
+      "majors.json": "专业数据 (68 条)",
+      "keyword-stats.json": "关键词统计数据 (5000 条)",
+      "markov-chains.json": "马尔可夫链数据 (10000 条)",
+      "major-markov-chains.json": "专业马尔可夫链数据 (10000 条)",
+      "generated-topics.json": "生成题目样例 (18 条)"
+    },
+    "seeds": {
+      "graduation-topics-sample.json": "毕业设计题目样例数据 (1000 条)",
+      "majors.json": "专业数据 (68 条)",
+      "keyword-stats.json": "关键词统计数据 (5000 条)",
+      "markov-chains.json": "马尔可夫链数据 (10000 条)",
+      "major-markov-chains.json": "专业马尔可夫链数据 (10000 条)"
+    }
+  }
+}

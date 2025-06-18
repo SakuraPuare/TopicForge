@@ -1,0 +1,246 @@
+[
+  {
+    "id": "cmc1w6236000dvrfoy9ufrxhx",
+    "content": "网络诽谤构成地区社会工作介入",
+    "algorithm": "hybrid",
+    "params": {
+      "count": 5,
+      "algorithm": "hybrid",
+      "qualityThreshold": 0.15,
+      "saveToHistory": true
+    },
+    "rating": null,
+    "createdAt": "2025-06-18T11:51:34.651Z"
+  },
+  {
+    "id": "cmc1w6236000evrfo6t6k5rch",
+    "content": "深度学习现状比较",
+    "algorithm": "hybrid",
+    "params": {
+      "count": 5,
+      "algorithm": "hybrid",
+      "qualityThreshold": 0.15,
+      "saveToHistory": true
+    },
+    "rating": null,
+    "createdAt": "2025-06-18T11:51:34.651Z"
+  },
+  {
+    "id": "cmc1w6236000fvrfodpj8rrxt",
+    "content": "计算机学科竞赛",
+    "algorithm": "hybrid",
+    "params": {
+      "count": 5,
+      "algorithm": "hybrid",
+      "qualityThreshold": 0.15,
+      "saveToHistory": true
+    },
+    "rating": null,
+    "createdAt": "2025-06-18T11:51:34.651Z"
+  },
+  {
+    "id": "cmc1w6236000gvrfoxhar3dk6",
+    "content": "基于云计算的交通分析平台",
+    "algorithm": "hybrid",
+    "params": {
+      "count": 5,
+      "algorithm": "hybrid",
+      "qualityThreshold": 0.15,
+      "saveToHistory": true
+    },
+    "rating": null,
+    "createdAt": "2025-06-18T11:51:34.651Z"
+  },
+  {
+    "id": "cmc1w6236000hvrfo66wo73t5",
+    "content": "物联网在移动环境中的优化实现",
+    "algorithm": "hybrid",
+    "params": {
+      "count": 5,
+      "algorithm": "hybrid",
+      "qualityThreshold": 0.15,
+      "saveToHistory": true
+    },
+    "rating": null,
+    "createdAt": "2025-06-18T11:51:34.651Z"
+  },
+  {
+    "id": "cmc1vtdz80007vrforut4birr",
+    "content": "移动终端产品",
+    "algorithm": "markov",
+    "params": {
+      "count": 5,
+      "algorithm": "markov",
+      "qualityThreshold": 0.15,
+      "saveToHistory": true
+    },
+    "rating": null,
+    "createdAt": "2025-06-18T11:41:43.404Z"
+  },
+  {
+    "id": "cmc1vtdz80008vrfoalbu874w",
+    "content": "人工智能绘画氛围营造宴赋为例",
+    "algorithm": "markov",
+    "params": {
+      "count": 5,
+      "algorithm": "markov",
+      "qualityThreshold": 0.15,
+      "saveToHistory": true
+    },
+    "rating": null,
+    "createdAt": "2025-06-18T11:41:43.404Z"
+  },
+  {
+    "id": "cmc1vtdz80009vrfojvse7old",
+    "content": "移动通信调制",
+    "algorithm": "markov",
+    "params": {
+      "count": 5,
+      "algorithm": "markov",
+      "qualityThreshold": 0.15,
+      "saveToHistory": true
+    },
+    "rating": null,
+    "createdAt": "2025-06-18T11:41:43.404Z"
+  },
+  {
+    "id": "cmc1vtdz8000avrfoe619wofb",
+    "content": "机器学习带帽蘑菇毒性影响因素统计分析",
+    "algorithm": "markov",
+    "params": {
+      "count": 5,
+      "algorithm": "markov",
+      "qualityThreshold": 0.15,
+      "saveToHistory": true
+    },
+    "rating": null,
+    "createdAt": "2025-06-18T11:41:43.404Z"
+  },
+  {
+    "id": "cmc1vtdz8000bvrfocprivpkd",
+    "content": "网络人文关怀行为观察意识",
+    "algorithm": "markov",
+    "params": {
+      "count": 5,
+      "algorithm": "markov",
+      "qualityThreshold": 0.15,
+      "saveToHistory": true
+    },
+    "rating": null,
+    "createdAt": "2025-06-18T11:41:43.404Z"
+  },
+  {
+    "id": "cmc1vlwum0000vrfow3mc5h6u",
+    "content": "人工智能驱动的金融技术方案",
+    "algorithm": "template",
+    "params": {
+      "count": 5,
+      "algorithm": "template",
+      "qualityThreshold": 0.15,
+      "saveToHistory": true,
+      "major": "临床医学",
+      "year": "2024"
+    },
+    "rating": null,
+    "createdAt": "2025-06-18T11:35:54.764Z"
+  },
+  {
+    "id": "cmc1vlwum0001vrfofl1mbgcn",
+    "content": "人工智能在分布式系统中的设计实现",
+    "algorithm": "template",
+    "params": {
+      "count": 5,
+      "algorithm": "template",
+      "qualityThreshold": 0.15,
+      "saveToHistory": true,
+      "major": "临床医学",
+      "year": "2024"
+    },
+    "rating": null,
+    "createdAt": "2025-06-18T11:35:54.764Z"
+  },
+  {
+    "id": "cmc1vlwum0002vrfods19vald",
+    "content": "基于神经网络的金融分析方法",
+    "algorithm": "template",
+    "params": {
+      "count": 5,
+      "algorithm": "template",
+      "qualityThreshold": 0.15,
+      "saveToHistory": true,
+      "major": "临床医学",
+      "year": "2024"
+    },
+    "rating": null,
+    "createdAt": "2025-06-18T11:35:54.764Z"
+  },
+  {
+    "id": "cmc1vlwum0003vrfoyddwupz4",
+    "content": "面向开发者的物联网服务平台",
+    "algorithm": "template",
+    "params": {
+      "count": 5,
+      "algorithm": "template",
+      "qualityThreshold": 0.15,
+      "saveToHistory": true,
+      "major": "临床医学",
+      "year": "2024"
+    },
+    "rating": null,
+    "createdAt": "2025-06-18T11:35:54.764Z"
+  },
+  {
+    "id": "cmc1vlwum0004vrfo6vak9i4f",
+    "content": "电商中的深度学习预测研究",
+    "algorithm": "template",
+    "params": {
+      "count": 5,
+      "algorithm": "template",
+      "qualityThreshold": 0.15,
+      "saveToHistory": true,
+      "major": "临床医学",
+      "year": "2024"
+    },
+    "rating": null,
+    "createdAt": "2025-06-18T11:35:54.764Z"
+  },
+  {
+    "id": "cmc1vlgpk77dsvrr8tzcttmps",
+    "content": "移动边缘信息系统优化",
+    "algorithm": "markov",
+    "params": {
+      "count": 3,
+      "algorithm": "markov",
+      "qualityThreshold": 0.15,
+      "saveToHistory": true
+    },
+    "rating": null,
+    "createdAt": "2025-06-18T11:35:33.847Z"
+  },
+  {
+    "id": "cmc1vlgpk77dtvrr8ldr13czy",
+    "content": "智能医用输液监测装置结构设计仿真",
+    "algorithm": "markov",
+    "params": {
+      "count": 3,
+      "algorithm": "markov",
+      "qualityThreshold": 0.15,
+      "saveToHistory": true
+    },
+    "rating": null,
+    "createdAt": "2025-06-18T11:35:33.847Z"
+  },
+  {
+    "id": "cmc1vlgpk77duvrr8k16zq07n",
+    "content": "数字化实习教师职业发展运用",
+    "algorithm": "markov",
+    "params": {
+      "count": 3,
+      "algorithm": "markov",
+      "qualityThreshold": 0.15,
+      "saveToHistory": true
+    },
+    "rating": null,
+    "createdAt": "2025-06-18T11:35:33.847Z"
+  }
+]
