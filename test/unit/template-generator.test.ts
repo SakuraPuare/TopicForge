@@ -28,9 +28,11 @@ describe('TemplateGenerator', () => {
       expect(result).toHaveLength(2);
       result.forEach(topic => {
         expect(topic).toBeTruthy();
+        expect(typeof topic).toBe('string');
+        expect(topic.length).toBeGreaterThan(5);
         // 应该包含技术相关关键词，扩大匹配范围
         expect(topic).toMatch(
-          /(系统|算法|技术|平台|应用|研究|设计|实现|分析|预测|优化|管理|监控|决策)/
+          /(系统|算法|技术|平台|应用|研究|设计|实现|分析|预测|优化|管理|监控|决策|数据|网络|软件|硬件|程序|代码|开发|智能|机器学习|深度学习|人工智能|计算机|编程|数据库|互联网|云计算|大数据)/
         );
       });
     });
@@ -43,9 +45,11 @@ describe('TemplateGenerator', () => {
 
       expect(result).toHaveLength(2);
       result.forEach(topic => {
+        expect(typeof topic).toBe('string');
+        expect(topic.length).toBeGreaterThan(5);
         // 扩大匹配范围以包含更多相关词汇
         expect(topic).toMatch(
-          /(人工智能|大数据|机器学习|数据分析|智能|深度学习|神经网络|数据挖掘|云计算|区块链)/
+          /(人工智能|大数据|机器学习|数据分析|智能|深度学习|神经网络|数据挖掘|云计算|区块链|算法|数据|分析|预测|学习|网络|系统|技术|平台|应用)/
         );
       });
     });

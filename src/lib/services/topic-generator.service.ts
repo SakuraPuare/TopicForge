@@ -468,9 +468,15 @@ export class TopicGeneratorService {
       }
 
       // 如果马尔科夫生成失败或数量不足，启用fallback
-      if (config.algorithm === 'markov' && generatedTopics.length === 0) {
-        console.log('马尔科夫生成失败，fallback到模板生成');
-        generatedTopics = await this.generateWithTemplate(config);
+      if (
+        config.algorithm === 'markov' &&
+        generatedTopics.length < (config.count || 5)
+      ) {
+        console.log('马尔科夫生成失败或数量不足，fallback到模板生成');
+        const fallbackTopics = await this.generateWithTemplate(config);
+        // 合并结果，确保总数不超过要求
+        const combined = [...generatedTopics, ...fallbackTopics];
+        generatedTopics = combined.slice(0, config.count || 5);
         fallbackUsed = true;
       }
     } catch (error) {
