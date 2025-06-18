@@ -180,13 +180,262 @@ export class TextProcessorService {
   }
 
   /**
-   * 批量处理题目
+   * 批量处理题目 - 优化版本
    * @param titles 题目数组
    * @param major 专业（可选）
    * @returns 处理结果
    */
   batchProcess(titles: string[], major?: string): ProcessedTopic[] {
-    return titles.map(title => this.processSingleTitle(title, major));
+    // 优化：预先计算通用数据，减少重复操作
+    const batchStartTime = Date.now();
+
+    // 显示进度
+    if (titles.length > 1000) {
+      console.log(`   开始批处理 ${titles.length.toLocaleString()} 个题目...`);
+    }
+
+    const results = titles.map((title, index) => {
+      // 显示处理进度
+      if (titles.length > 5000 && index > 0 && index % 5000 === 0) {
+        const progress = ((index / titles.length) * 100).toFixed(1);
+        const speed = Math.round(
+          index / ((Date.now() - batchStartTime) / 1000)
+        );
+        console.log(
+          `   处理进度: ${progress}% (${index.toLocaleString()}/${titles.length.toLocaleString()}) - ${speed} 题目/秒`
+        );
+      }
+
+      return this.processSingleTitle(title, major);
+    });
+
+    if (titles.length > 1000) {
+      const totalTime = Date.now() - batchStartTime;
+      const speed = Math.round(titles.length / (totalTime / 1000));
+      console.log(
+        `   ✓ 批处理完成，耗时 ${(totalTime / 1000).toFixed(2)} 秒，平均 ${speed} 题目/秒`
+      );
+    }
+
+    return results;
+  }
+
+  /**
+   * 高性能批量处理题目 - 专用于训练阶段
+   * @param titles 题目数组
+   * @param majors 对应的专业数组（可选）
+   * @returns 处理结果
+   */
+  batchProcessForTraining(
+    titles: string[],
+    majors?: (string | undefined)[]
+  ): ProcessedTopic[] {
+    const batchStartTime = Date.now();
+    console.log(
+      `   🚀 开始高性能批处理 ${titles.length.toLocaleString()} 个题目...`
+    );
+
+    // 预计算技术词典查找表，提高性能
+    const techTermsSet = new Set(TECH_DICT);
+    const stopWordsSet = new Set(STOP_WORDS);
+
+    const results: ProcessedTopic[] = [];
+    const PROGRESS_STEP = Math.max(1000, Math.floor(titles.length / 20)); // 5%间隔报告进度
+
+    for (let i = 0; i < titles.length; i++) {
+      const title = titles[i];
+      const major = majors?.[i];
+
+      // 显示处理进度
+      if (i > 0 && i % PROGRESS_STEP === 0) {
+        const progress = ((i / titles.length) * 100).toFixed(1);
+        const speed = Math.round(i / ((Date.now() - batchStartTime) / 1000));
+        console.log(
+          `   处理进度: ${progress}% (${i.toLocaleString()}/${titles.length.toLocaleString()}) - ${speed.toLocaleString()} 题目/秒`
+        );
+      }
+
+      // 优化的处理流程
+      const processedTopic = this.processSingleTitleOptimized(
+        title,
+        major,
+        techTermsSet,
+        stopWordsSet
+      );
+      results.push(processedTopic);
+    }
+
+    const totalTime = Date.now() - batchStartTime;
+    const speed = Math.round(titles.length / (totalTime / 1000));
+    console.log(`   ✅ 高性能批处理完成！`);
+    console.log(`   耗时: ${(totalTime / 1000).toFixed(2)} 秒`);
+    console.log(`   平均速度: ${speed.toLocaleString()} 题目/秒`);
+    console.log(
+      `   有效题目: ${results.filter(r => r.quality >= 0.15).length.toLocaleString()}/${results.length.toLocaleString()}`
+    );
+
+    return results;
+  }
+
+  /**
+   * 优化的单个题目处理
+   */
+  private processSingleTitleOptimized(
+    title: string,
+    major?: string,
+    techTermsSet?: Set<string>,
+    stopWordsSet?: Set<string>
+  ): ProcessedTopic {
+    // 使用预计算的集合提高查找性能
+    const tokens = this.tokenizeOptimized(title, stopWordsSet);
+    const keywords = this.extractKeywordsOptimized(
+      title,
+      tokens,
+      techTermsSet,
+      {
+        topK: 5,
+        includeTechTerms: true,
+      }
+    );
+
+    return {
+      originalTitle: title,
+      cleanTitle: this.cleanText(title),
+      tokens,
+      keywords,
+      tokenCount: tokens.length,
+      quality: this.assessQualityOptimized(title, tokens, major, techTermsSet)
+        .score,
+      major,
+    };
+  }
+
+  /**
+   * 优化的分词方法
+   */
+  private tokenizeOptimized(
+    text: string,
+    stopWordsSet?: Set<string>
+  ): string[] {
+    // 使用预计算的停用词集合
+    const stopWords = stopWordsSet || new Set(STOP_WORDS);
+
+    return text
+      .toLowerCase()
+      .replace(/[^\u4e00-\u9fa5a-zA-Z0-9\s]/g, ' ') // 清理标点符号
+      .split(/\s+/)
+      .filter(token => {
+        return (
+          token.length > 0 &&
+          !stopWords.has(token) &&
+          !this.isPunctuation(token) &&
+          this.isValidToken(token)
+        );
+      });
+  }
+
+  /**
+   * 优化的关键词提取
+   */
+  private extractKeywordsOptimized(
+    text: string,
+    tokens: string[],
+    techTermsSet?: Set<string>,
+    config: KeywordExtractionConfig = { topK: 10 }
+  ): string[] {
+    const wordFreq = new Map<string, number>();
+
+    // 计算词频
+    tokens.forEach(token => {
+      wordFreq.set(token, (wordFreq.get(token) || 0) + 1);
+    });
+
+    // 提升技术术语权重
+    if (config.includeTechTerms && techTermsSet) {
+      for (const [word, freq] of wordFreq.entries()) {
+        if (
+          techTermsSet.has(word) ||
+          this.isTechTermWithSet(word, techTermsSet)
+        ) {
+          wordFreq.set(word, freq * 1.5);
+        }
+      }
+    }
+
+    return Array.from(wordFreq.entries())
+      .filter(([, freq]) => !config.minFrequency || freq >= config.minFrequency)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, config.topK)
+      .map(entry => entry[0]);
+  }
+
+  /**
+   * 优化的质量评估
+   */
+  private assessQualityOptimized(
+    title: string,
+    tokens: string[],
+    major?: string,
+    techTermsSet?: Set<string>
+  ): QualityAssessment {
+    const factors = {
+      length: this.assessLength(title),
+      techTerms: this.assessTechTermsOptimized(tokens, major, techTermsSet),
+      basicTerms: this.assessBasicTerms(tokens),
+      structure: this.assessStructure(tokens),
+      uniqueness: this.assessUniqueness(tokens),
+    };
+
+    const score = Math.min(
+      5.0 *
+        (0.3 +
+          factors.length * 0.3 +
+          factors.techTerms * 0.4 +
+          factors.basicTerms * 0.2 +
+          factors.structure * 0.1 +
+          factors.uniqueness * 0.1),
+      5.0
+    );
+
+    return { score, factors };
+  }
+
+  /**
+   * 优化的技术术语评估
+   */
+  private assessTechTermsOptimized(
+    tokens: string[],
+    major?: string,
+    techTermsSet?: Set<string>
+  ): number {
+    if (!techTermsSet) {
+      return this.assessTechTerms(tokens, major);
+    }
+
+    const techWords = tokens.filter(token => {
+      const isGeneralTech =
+        techTermsSet.has(token) || this.isTechTermWithSet(token, techTermsSet);
+      const isMajorSpecific =
+        major &&
+        MAJOR_SPECIFIC_TECH_DICT[major]?.some(
+          techWord => techWord.includes(token) || token.includes(techWord)
+        );
+      return isGeneralTech || isMajorSpecific;
+    });
+
+    return Math.min(techWords.length * 0.25, 1.0);
+  }
+
+  /**
+   * 使用预计算集合的技术术语判断
+   */
+  private isTechTermWithSet(word: string, techTermsSet: Set<string>): boolean {
+    return (
+      techTermsSet.has(word) ||
+      Array.from(techTermsSet).some(
+        techWord => techWord.includes(word) || word.includes(techWord)
+      )
+    );
   }
 
   /**

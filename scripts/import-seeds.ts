@@ -7,6 +7,7 @@ const prisma = new PrismaClient();
 interface ImportStats {
   graduationTopics: number;
   majors: number;
+  generatedTopics: number;
   keywordStats: number;
   markovChains: number;
   majorMarkovChains: number;
@@ -21,6 +22,7 @@ async function importSeeds(useSample = true) {
   const stats: ImportStats = {
     graduationTopics: 0,
     majors: 0,
+    generatedTopics: 0,
     keywordStats: 0,
     markovChains: 0,
     majorMarkovChains: 0,
@@ -61,12 +63,16 @@ async function importSeeds(useSample = true) {
     // 5. 导入专业马尔可夫链数据
     await importMajorMarkovChains(seedsDir, stats);
 
+    // 6. 导入生成题目数据
+    await importGeneratedTopics(seedsDir, stats);
+
     console.log('\n✅ 种子数据导入完成！');
     console.log('\n📊 导入统计:');
     console.log(
       `   毕业设计题目: ${stats.graduationTopics.toLocaleString()} 条`
     );
     console.log(`   专业数据: ${stats.majors} 条`);
+    console.log(`   生成题目样例: ${stats.generatedTopics} 条`);
     console.log(`   关键词统计: ${stats.keywordStats.toLocaleString()} 条`);
     console.log(`   马尔可夫链: ${stats.markovChains.toLocaleString()} 条`);
     console.log(
@@ -308,6 +314,52 @@ async function importMajorMarkovChains(seedsDir: string, stats: ImportStats) {
   console.log(
     `   ✅ 导入完成: 成功导入 ${successCount} 条，跳过重复 ${skipCount} 条`
   );
+}
+
+/**
+ * 导入生成题目数据
+ */
+async function importGeneratedTopics(seedsDir: string, stats: ImportStats) {
+  console.log('✨ 导入生成题目数据...');
+  const filePath = path.join(seedsDir, 'generated-topics.json');
+
+  if (!fs.existsSync(filePath)) {
+    console.log('   ⚠️  生成题目数据文件不存在，跳过');
+    return;
+  }
+
+  const generatedTopics = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+
+  // 去除id字段以避免冲突，让Prisma自动生成新的ID
+  const topicsWithoutId = generatedTopics.map(
+    (topic: Record<string, unknown>) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { id, ...topicData } = topic;
+      return topicData;
+    }
+  );
+
+  // 使用逐个插入以便处理重复数据
+  let successCount = 0;
+  let skipCount = 0;
+
+  for (const topicData of topicsWithoutId) {
+    try {
+      await prisma.generatedTopic.create({
+        data: topicData,
+      });
+      successCount++;
+    } catch {
+      skipCount++;
+      // 静默跳过重复数据
+    }
+  }
+
+  stats.generatedTopics = successCount;
+  console.log(`   ✓ 已导入 ${successCount} 条生成题目数据`);
+  if (skipCount > 0) {
+    console.log(`   ⚠️  跳过重复数据: ${skipCount} 条`);
+  }
 }
 
 // 执行导入

@@ -161,7 +161,7 @@ export class TopicGeneratorService {
   }
 
   /**
-   * 处理训练数据
+   * 处理训练数据 - 高性能版本
    * @param topics 原始题目
    * @param config 训练配置
    * @returns 处理后的题目
@@ -174,35 +174,30 @@ export class TopicGeneratorService {
     }>,
     config: TrainingConfig
   ): Promise<(ProcessedTopic & { major?: string })[]> {
-    console.log('开始处理训练数据...');
+    console.log('🚀 开始高性能处理训练数据...');
 
     const titles = topics.map(t => t.title);
     const majors = topics.map(t => t.major || undefined);
 
-    // 批量处理文本
-    const processedTopics = titles.map(
-      (title, index) => textProcessor.batchProcess([title], majors[index])[0]
+    // 使用高性能批量处理
+    const processedTopics = textProcessor.batchProcessForTraining(
+      titles,
+      majors
     );
-
-    // 添加专业信息
-    const enhancedTopics = processedTopics.map((topic, index) => ({
-      ...topic,
-      major: majors[index],
-    }));
 
     // 过滤低质量题目
     const qualityThreshold = config.qualityThreshold || 0.3;
-    const validTopics = enhancedTopics.filter(
+    const validTopics = processedTopics.filter(
       topic => topic.quality >= qualityThreshold
     );
 
     console.log(
-      `文本处理完成，有效题目: ${validTopics.length}/${enhancedTopics.length}，` +
+      `✅ 文本处理完成！有效题目: ${validTopics.length.toLocaleString()}/${processedTopics.length.toLocaleString()}，` +
         `平均质量分数: ${(validTopics.reduce((sum, t) => sum + t.quality, 0) / validTopics.length).toFixed(2)}`
     );
 
     // 保存处理结果
-    await this.saveProcessedData(topics, enhancedTopics, config);
+    await this.saveProcessedData(topics, processedTopics, config);
 
     return validTopics;
   }

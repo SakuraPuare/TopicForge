@@ -15,9 +15,11 @@ interface ExportStats {
 
 /**
  * 导出数据库数据为种子文件
+ * 注意：会话数据 (generation_sessions) 不参与导出，因为这些是运行时临时数据
  */
 async function exportDatabase() {
-  console.log('🚀 开始导出数据库数据...\n');
+  console.log('�� 开始导出数据库数据...\n');
+  console.log('⚠️  注意：会话数据 (generation_sessions) 不会被导出\n');
 
   const stats: ExportStats = {
     graduationTopics: 0,
