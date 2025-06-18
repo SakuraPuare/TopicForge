@@ -15,6 +15,9 @@ export {
 // 专业管理服务
 export { majorService, MajorService } from './major.service';
 
+// 数据获取服务
+export { dataService, DataService } from './data.service';
+
 // 主题生成服务（主服务）
 export {
   topicGeneratorService,

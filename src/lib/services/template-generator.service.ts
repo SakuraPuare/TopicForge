@@ -196,24 +196,60 @@ export class TemplateGeneratorService {
       `使用模板生成 ${actualCount} 个题目${options.major ? `（专业：${options.major}）` : ''}...`
     );
 
-    let attempts = 0;
-    const maxAttempts = actualCount * 3; // 防止无限循环
+    // 批量生成候选题目，减少单个生成的开销
+    const batchSize = Math.min(actualCount * 2, 30); // 生成目标数量的2倍，但不超过30个
+    const candidates: string[] = [];
 
-    while (results.length < actualCount && attempts < maxAttempts) {
-      attempts++;
+    for (let i = 0; i < batchSize && candidates.length < actualCount * 3; i++) {
       const template = this.selectRandomTemplate(templates);
       const topic = this.fillTemplate(template, options.major);
 
-      if (this.validateTopicQuality(topic) && !results.includes(topic)) {
+      // 基本质量检查和去重
+      if (
+        topic &&
+        topic.length >= 6 &&
+        topic.length <= 50 &&
+        !candidates.includes(topic)
+      ) {
+        candidates.push(topic);
+      }
+    }
+
+    // 从候选题目中筛选最终结果
+    for (const candidate of candidates) {
+      if (results.length >= actualCount) break;
+
+      if (this.validateTopicQuality(candidate)) {
         // 如果指定了主题过滤，检查是否匹配
         if (options.themes && options.themes.length > 0) {
-          if (this.matchesThemes(topic, options.themes)) {
-            results.push(topic);
-            console.log(`✓ 模板生成题目 ${results.length}: ${topic}`);
+          if (this.matchesThemes(candidate, options.themes)) {
+            results.push(candidate);
+            console.log(`✓ 模板生成题目 ${results.length}: ${candidate}`);
           }
         } else {
+          results.push(candidate);
+          console.log(`✓ 模板生成题目 ${results.length}: ${candidate}`);
+        }
+      }
+    }
+
+    // 如果结果不够，进行简单的补充生成（降低质量要求）
+    if (results.length < actualCount) {
+      console.log(`需要补充 ${actualCount - results.length} 个题目`);
+
+      for (let i = 0; results.length < actualCount && i < 15; i++) {
+        const template = this.selectRandomTemplate(templates);
+        const topic = this.fillTemplate(template, options.major);
+
+        // 降低质量要求，只检查基本长度和重复
+        if (
+          topic &&
+          topic.length >= 6 &&
+          topic.length <= 50 &&
+          !results.includes(topic)
+        ) {
           results.push(topic);
-          console.log(`✓ 模板生成题目 ${results.length}: ${topic}`);
+          console.log(`✓ 补充生成题目 ${results.length}: ${topic}`);
         }
       }
     }

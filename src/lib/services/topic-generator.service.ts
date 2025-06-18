@@ -441,17 +441,78 @@ export class TopicGeneratorService {
     let majorInfo: GenerationResult['majorInfo'];
     let fallbackUsed = false;
 
-    // 获取专业信息
-    if (config.major) {
-      const info = await majorService.getMajorInfo(config.major);
-      if (info) {
-        majorInfo = {
-          major: config.major,
-          sampleCount: info.sampleCount,
-          hasSpecificModel: info.hasModel,
-        };
-      }
+    // 并行获取专业信息和生成题目
+    const [topics, majorInfoResult] = await Promise.all([
+      this.generateTopicsInternal(config),
+      config.major
+        ? majorService.getMajorInfo(config.major)
+        : Promise.resolve(null),
+    ]);
+
+    generatedTopics = topics.generatedTopics;
+    fallbackUsed = topics.fallbackUsed;
+
+    if (majorInfoResult) {
+      majorInfo = {
+        major: config.major!,
+        sampleCount: majorInfoResult.sampleCount,
+        hasSpecificModel: majorInfoResult.hasModel,
+      };
     }
+
+    // 异步保存生成历史，不阻塞响应
+    if (config.saveToHistory && generatedTopics.length > 0) {
+      this.saveGenerationHistory(generatedTopics, config).catch(error =>
+        console.warn('保存生成历史失败:', error)
+      );
+    }
+
+    const endTime = Date.now();
+    const generationTime = endTime - startTime;
+
+    // 计算真实的平均质量
+    let avgQuality = 0;
+    if (generatedTopics.length > 0) {
+      // 对生成的题目进行质量评估
+      const processedTopics = generatedTopics.map(
+        topic => textProcessor.batchProcess([topic])[0]
+      );
+      avgQuality =
+        processedTopics.reduce((sum, topic) => sum + topic.quality, 0) /
+        processedTopics.length;
+    }
+
+    const result: GenerationResult = {
+      topics: generatedTopics,
+      stats: {
+        totalGenerated: generatedTopics.length,
+        validTopics: generatedTopics.length,
+        averageQuality: avgQuality,
+        generationTime,
+        algorithm: config.algorithm,
+        major: config.major,
+        fallbackUsed,
+      },
+      algorithm: config.algorithm,
+      params: config,
+      majorInfo,
+    };
+
+    console.log(
+      `生成完成! 耗时: ${generationTime}ms, 题目数: ${generatedTopics.length}, 平均质量: ${avgQuality.toFixed(2)}/5.0`
+    );
+
+    return result;
+  }
+
+  /**
+   * 内部生成方法，处理fallback逻辑
+   */
+  private async generateTopicsInternal(
+    config: GenerationParams
+  ): Promise<{ generatedTopics: string[]; fallbackUsed: boolean }> {
+    let generatedTopics: string[] = [];
+    let fallbackUsed = false;
 
     try {
       // 根据算法生成题目
@@ -485,43 +546,7 @@ export class TopicGeneratorService {
       fallbackUsed = true;
     }
 
-    // 保存生成历史
-    if (config.saveToHistory) {
-      await this.saveGenerationHistory(generatedTopics, config);
-    }
-
-    const endTime = Date.now();
-    const generationTime = endTime - startTime;
-
-    // 计算统计信息
-    const qualities = generatedTopics.map(
-      topic => textProcessor.batchProcess([topic])[0].quality
-    );
-
-    const result: GenerationResult = {
-      topics: generatedTopics,
-      stats: {
-        totalGenerated: generatedTopics.length,
-        validTopics: generatedTopics.length,
-        averageQuality:
-          qualities.length > 0
-            ? qualities.reduce((sum, q) => sum + q, 0) / qualities.length
-            : 0,
-        generationTime,
-        algorithm: config.algorithm,
-        major: config.major,
-        fallbackUsed,
-      },
-      algorithm: config.algorithm,
-      params: config,
-      majorInfo,
-    };
-
-    console.log(
-      `生成完成! 耗时: ${generationTime}ms, 平均质量: ${result.stats.averageQuality.toFixed(2)}`
-    );
-
-    return result;
+    return { generatedTopics, fallbackUsed };
   }
 
   /**

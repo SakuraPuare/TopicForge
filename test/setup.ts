@@ -5,5 +5,7 @@
 import '@testing-library/jest-dom';
 
 // 模拟环境变量
-process.env.NODE_ENV = 'test';
-process.env.DATABASE_URL = 'file:./test.db';
+Object.assign(process.env, {
+  NODE_ENV: 'test',
+  DATABASE_URL: 'file:./test.db',
+});

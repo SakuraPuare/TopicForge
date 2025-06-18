@@ -484,8 +484,6 @@ export class MarkovChainService {
   async generate(options: Partial<GenerationOptions> = {}): Promise<string[]> {
     const { count = 5, major, qualityThreshold = 0.15 } = options;
     const results: string[] = [];
-    let attempts = 0;
-    const maxAttempts = count * 3;
 
     // 确保有可用的转移表
     if (
@@ -497,45 +495,78 @@ export class MarkovChainService {
         await this.loadFromDatabase();
       } catch (error) {
         console.warn('无法加载模型:', error);
+        return []; // 直接返回空数组，避免无效尝试
       }
     }
 
-    while (results.length < count && attempts < maxAttempts) {
-      attempts++;
+    // 批量生成，减少单个生成的开销
+    const batchSize = Math.min(count * 2, 20); // 生成目标数量的2倍，但不超过20个
+    const candidates: string[] = [];
+
+    for (let i = 0; i < batchSize && candidates.length < count * 3; i++) {
       try {
         const topic = this.generateSingle({
           majorId: major,
           temperature: 1.0,
         });
 
-        // 质量检查
-        if (topic && topic.length >= 6 && topic.length <= 50) {
-          const processedTopic = textProcessor.batchProcess([topic])[0];
-          if (
-            processedTopic.quality >= qualityThreshold &&
-            !results.includes(topic)
-          ) {
-            results.push(topic);
-            console.log(
-              `✓ 马尔科夫生成题目 ${results.length}: ${topic} (质量: ${processedTopic.quality.toFixed(2)})`
-            );
-          }
+        // 基本长度和重复检查
+        if (
+          topic &&
+          topic.length >= 6 &&
+          topic.length <= 50 &&
+          !candidates.includes(topic)
+        ) {
+          candidates.push(topic);
         }
-      } catch (error) {
-        console.warn('生成单个题目失败:', error);
+      } catch {
+        // 忽略单个生成失败
+        continue;
       }
     }
 
-    if (results.length === 0) {
-      // 如果专业特定生成失败，回退到通用生成
-      console.log('专业特定生成失败，回退到通用生成');
-      try {
-        const fallbackTopic = this.generateSingle({ temperature: 1.0 });
-        if (fallbackTopic) {
-          results.push(fallbackTopic);
+    // 批量质量检查（只对候选题目进行）
+    if (candidates.length > 0) {
+      const processedTopics = textProcessor.batchProcess(candidates);
+
+      for (
+        let i = 0;
+        i < processedTopics.length && results.length < count;
+        i++
+      ) {
+        const processed = processedTopics[i];
+        if (processed.quality >= qualityThreshold) {
+          results.push(candidates[i]);
+          console.log(
+            `✓ 马尔科夫生成题目 ${results.length}: ${candidates[i]} (质量: ${processed.quality.toFixed(2)})`
+          );
         }
-      } catch (error) {
-        console.warn('通用生成也失败:', error);
+      }
+    }
+
+    // 如果结果不够，进行简单的回退生成（不进行质量检查）
+    if (results.length < count) {
+      console.log(`需要补充 ${count - results.length} 个题目`);
+
+      for (let i = 0; results.length < count && i < 10; i++) {
+        try {
+          const fallbackTopic = this.generateSingle({
+            temperature: 1.2, // 稍微提高随机性
+            majorId: major,
+          });
+
+          if (
+            fallbackTopic &&
+            fallbackTopic.length >= 6 &&
+            fallbackTopic.length <= 50 &&
+            !results.includes(fallbackTopic)
+          ) {
+            results.push(fallbackTopic);
+            console.log(`✓ 回退生成题目 ${results.length}: ${fallbackTopic}`);
+          }
+        } catch {
+          continue;
+        }
       }
     }
 

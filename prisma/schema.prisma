@@ -42,6 +42,19 @@ model TokenizedWord {
   @@map("tokenized_words")
 }
 
+// 生成会话表 - 存储完整的生成结果
+model GenerationSession {
+  id         String   @id @default(cuid())
+  topics     String   // 生成的题目数组 (JSON字符串)
+  algorithm  String   // 使用的算法
+  params     String   // 生成参数 (JSON字符串)
+  stats      String   // 生成统计信息 (JSON字符串)
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime // 过期时间，用于清理旧数据
+
+  @@map("generation_sessions")
+}
+
 // 生成历史表
 model GeneratedTopic {
   id        String   @id @default(cuid())

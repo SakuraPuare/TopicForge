@@ -6,6 +6,7 @@ import { MarkovConfig } from './markov';
 export interface GenerationParams {
   count?: number; // 生成数量，默认5
   major?: string; // 专业领域过滤
+  year?: string; // 参考年份，'all'表示不限年份
   keywords?: string[]; // 关键词偏好
   algorithm?: 'markov' | 'template' | 'hybrid'; // 生成算法
   config?: Partial<MarkovConfig>; // 马尔科夫配置
@@ -18,18 +19,18 @@ export interface GenerationParams {
  * 生成结果接口
  */
 export interface GenerationResult {
-  topics: string[];
+  topics: string[]; // 生成的题目数组
   stats: {
-    totalGenerated: number;
-    validTopics: number;
-    averageQuality: number;
-    generationTime: number;
-    algorithm?: string;
-    major?: string;
-    fallbackUsed?: boolean;
+    totalGenerated: number; // 总生成数量
+    validTopics: number; // 有效题目数量
+    averageQuality: number; // 平均质量评分（5分制：0-5分）
+    generationTime: number; // 生成耗时（毫秒）
+    algorithm: string; // 使用的算法
+    major?: string; // 专业领域
+    fallbackUsed: boolean; // 是否使用了备用算法
   };
-  algorithm: string;
-  params: GenerationParams;
+  algorithm: string; // 生成算法
+  params?: GenerationParams; // 生成参数
   majorInfo?: {
     major: string;
     sampleCount: number;
