@@ -5,6 +5,9 @@ import { MAJOR_SPECIFIC_TECH_DICT } from '../constants/tech-dict';
  * 模板生成器服务类
  */
 export class TemplateGeneratorService {
+  // 最大生成数量限制
+  private readonly MAX_GENERATION_COUNT = 50;
+
   // 通用模板
   private readonly GENERAL_TEMPLATES = [
     '基于{tech}的{domain}{system}',
@@ -178,27 +181,139 @@ export class TemplateGeneratorService {
    * @returns 生成的题目数组
    */
   async generate(options: GenerationOptions): Promise<string[]> {
+    // 处理无效参数
+    if (!options.count || options.count <= 0) {
+      return [];
+    }
+
+    // 限制最大生成数量
+    const actualCount = Math.min(options.count, this.MAX_GENERATION_COUNT);
+
     const results: string[] = [];
     const templates = this.getTemplatesForMajor(options.major);
 
     console.log(
-      `使用模板生成 ${options.count} 个题目${options.major ? `（专业：${options.major}）` : ''}...`
+      `使用模板生成 ${actualCount} 个题目${options.major ? `（专业：${options.major}）` : ''}...`
     );
 
-    for (let i = 0; i < options.count; i++) {
+    let attempts = 0;
+    const maxAttempts = actualCount * 3; // 防止无限循环
+
+    while (results.length < actualCount && attempts < maxAttempts) {
+      attempts++;
       const template = this.selectRandomTemplate(templates);
       const topic = this.fillTemplate(template, options.major);
 
-      if (topic && topic.length >= 6 && topic.length <= 50) {
-        results.push(topic);
-        console.log(`✓ 模板生成题目 ${i + 1}: ${topic}`);
-      } else {
-        i--; // 重试
+      if (this.validateTopicQuality(topic) && !results.includes(topic)) {
+        // 如果指定了主题过滤，检查是否匹配
+        if (options.themes && options.themes.length > 0) {
+          if (this.matchesThemes(topic, options.themes)) {
+            results.push(topic);
+            console.log(`✓ 模板生成题目 ${results.length}: ${topic}`);
+          }
+        } else {
+          results.push(topic);
+          console.log(`✓ 模板生成题目 ${results.length}: ${topic}`);
+        }
       }
     }
 
-    console.log(`模板生成完成: ${results.length}/${options.count} 个题目`);
+    console.log(`模板生成完成: ${results.length}/${actualCount} 个题目`);
     return results;
+  }
+
+  /**
+   * 验证题目质量
+   * @param topic 题目
+   * @returns 是否为高质量题目
+   */
+  validateTopicQuality(topic: string): boolean {
+    if (!topic || typeof topic !== 'string') {
+      return false;
+    }
+
+    const trimmedTopic = topic.trim();
+
+    // 长度检查
+    if (trimmedTopic.length < 6 || trimmedTopic.length > 50) {
+      return false;
+    }
+
+    // 检查是否包含有意义的内容
+    const meaningfulWords = [
+      '系统',
+      '算法',
+      '技术',
+      '平台',
+      '应用',
+      '研究',
+      '设计',
+      '实现',
+      '分析',
+      '管理',
+      '方法',
+      '框架',
+      '数据',
+      '智能',
+      '优化',
+    ];
+    const hasMeaningfulContent = meaningfulWords.some(word =>
+      trimmedTopic.includes(word)
+    );
+
+    if (!hasMeaningfulContent) {
+      return false;
+    }
+
+    // 检查是否为过于简单的题目
+    const tooSimplePatterns = [
+      /^(系统|研究|设计实现|基于的系统)$/,
+      /^[^的]{1,3}$/,
+      /^(基于|面向|智能)[^的]*$/,
+    ];
+
+    if (tooSimplePatterns.some(pattern => pattern.test(trimmedTopic))) {
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * 检查题目是否匹配指定主题
+   * @param topic 题目
+   * @param themes 主题数组
+   * @returns 是否匹配
+   */
+  private matchesThemes(topic: string, themes: string[]): boolean {
+    const themeKeywords = themes
+      .map(theme => {
+        switch (theme) {
+          case '人工智能':
+            return [
+              '人工智能',
+              '机器学习',
+              '深度学习',
+              '神经网络',
+              '智能',
+              'AI',
+            ];
+          case '大数据':
+            return [
+              '大数据',
+              '数据分析',
+              '数据挖掘',
+              '数据处理',
+              '数据可视化',
+              '分布式计算',
+            ];
+          default:
+            return [theme];
+        }
+      })
+      .flat();
+
+    return themeKeywords.some(keyword => topic.includes(keyword));
   }
 
   /**

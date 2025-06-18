@@ -47,9 +47,21 @@ export class TextProcessorService {
    */
   tokenize(text: string): string[] {
     const cleanText = this.cleanText(text);
-    const tokens = nodejieba.cut(cleanText);
+    const tagged = nodejieba.tag(cleanText);
 
-    return tokens.filter(token => this.isValidToken(token));
+    // 使用提取关键词的方式补充识别专业词组
+    const keywords = nodejieba.extract(cleanText, 5);
+    const keywordSet = new Set(keywords.map(k => k.word));
+
+    // 合并分词结果和关键词
+    const baseTokens = tagged
+      .filter(token => this.isValidToken(token.word))
+      .map(token => token.word);
+
+    // 把关键词添加到结果中
+    const result = new Set([...baseTokens, ...keywordSet]);
+
+    return Array.from(result);
   }
 
   /**
@@ -67,6 +79,24 @@ export class TextProcessorService {
   }
 
   /**
+   * 判断是否为标点符号
+   * @param token 待验证的token
+   * @returns 是否为标点符号
+   */
+  private isPunctuation(token: string): boolean {
+    return PUNCTUATION_REGEX.test(token);
+  }
+
+  /**
+   * 判断是否为数字
+   * @param token 待验证的token
+   * @returns 是否为数字
+   */
+  private isNumber(token: string): boolean {
+    return NUMBER_REGEX.test(token);
+  }
+
+  /**
    * 文本清洗
    * @param text 原始文本
    * @returns 清洗后的文本
@@ -75,7 +105,7 @@ export class TextProcessorService {
     return text
       .replace(/<[^>]*>/g, '') // 移除HTML标签
       .replace(/\s+/g, ' ') // 移除多余的空白字符
-      .replace(/[^\u4e00-\u9fa5a-zA-Z0-9\s]/g, '') // 移除特殊字符
+      .replace(/[^\u4e00-\u9fa5a-zA-Z0-9\s，。、：；！？]/g, '') // 保留中文标点，移除其他特殊字符
       .toLowerCase()
       .trim();
   }
@@ -199,14 +229,16 @@ export class TextProcessorService {
       uniqueness: this.assessUniqueness(tokens),
     };
 
+    // 计算加权得分，总分为5分
     const score = Math.min(
-      0.3 + // 基础分
-        factors.length * 0.3 +
-        factors.techTerms * 0.4 +
-        factors.basicTerms * 0.2 +
-        factors.structure * 0.1 +
-        factors.uniqueness * 0.1,
-      1.0
+      5.0 * // 将1.0的得分转换为5.0
+        (0.3 + // 基础分
+          factors.length * 0.3 +
+          factors.techTerms * 0.4 +
+          factors.basicTerms * 0.2 +
+          factors.structure * 0.1 +
+          factors.uniqueness * 0.1),
+      5.0
     );
 
     return { score, factors };
@@ -289,24 +321,6 @@ export class TextProcessorService {
     return TECH_DICT.some(
       techWord => techWord.includes(word) || word.includes(techWord)
     );
-  }
-
-  /**
-   * 判断是否为标点符号
-   * @param text 文本
-   * @returns 是否为标点符号
-   */
-  private isPunctuation(text: string): boolean {
-    return PUNCTUATION_REGEX.test(text);
-  }
-
-  /**
-   * 判断是否为纯数字
-   * @param text 文本
-   * @returns 是否为纯数字
-   */
-  private isNumber(text: string): boolean {
-    return NUMBER_REGEX.test(text);
   }
 }
 

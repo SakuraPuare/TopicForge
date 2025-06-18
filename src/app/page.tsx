@@ -1,103 +1,244 @@
-import Image from 'next/image';
+'use client';
+
+import { useState, useEffect } from 'react';
+
+interface MajorInfo {
+  major: string;
+  count: number;
+  sampleCount: number;
+  hasModel: boolean;
+}
+
+interface GenerationResult {
+  topics: string[];
+  stats: {
+    totalGenerated: number;
+    validTopics: number;
+    averageQuality: number;
+    generationTime: number;
+  };
+  algorithm: string;
+  majorInfo?: {
+    major: string;
+    sampleCount: number;
+    hasSpecificModel: boolean;
+  };
+}
 
 export default function Home() {
-  return (
-    <div className='grid min-h-screen grid-rows-[20px_1fr_20px] items-center justify-items-center gap-16 p-8 pb-20 font-[family-name:var(--font-geist-sans)] sm:p-20'>
-      <main className='row-start-2 flex flex-col items-center gap-[32px] sm:items-start'>
-        <Image
-          className='dark:invert'
-          src='/next.svg'
-          alt='Next.js logo'
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className='list-inside list-decimal text-center font-[family-name:var(--font-geist-mono)] text-sm/6 sm:text-left'>
-          <li className='mb-2 tracking-[-.01em]'>
-            Get started by editing{' '}
-            <code className='rounded bg-black/[.05] px-1 py-0.5 font-[family-name:var(--font-geist-mono)] font-semibold dark:bg-white/[.06]'>
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className='tracking-[-.01em]'>
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [majors, setMajors] = useState<MajorInfo[]>([]);
+  const [selectedMajor, setSelectedMajor] = useState<string>('');
+  const [algorithm, setAlgorithm] = useState<'markov' | 'template' | 'hybrid'>(
+    'markov'
+  );
+  const [count, setCount] = useState<number>(5);
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [generationResult, setGenerationResult] =
+    useState<GenerationResult | null>(null);
+  const [error, setError] = useState<string>('');
 
-        <div className='flex flex-col items-center gap-4 sm:flex-row'>
-          <a
-            className='bg-foreground text-background flex h-10 items-center justify-center gap-2 rounded-full border border-solid border-transparent px-4 text-sm font-medium transition-colors hover:bg-[#383838] sm:h-12 sm:w-auto sm:px-5 sm:text-base dark:hover:bg-[#ccc]'
-            href='https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app'
-            target='_blank'
-            rel='noopener noreferrer'
-          >
-            <Image
-              className='dark:invert'
-              src='/vercel.svg'
-              alt='Vercel logomark'
-              width={20}
-              height={20}
+  // 加载可用专业
+  useEffect(() => {
+    fetchMajors();
+  }, []);
+
+  const fetchMajors = async () => {
+    try {
+      const response = await fetch('/api/majors');
+      if (response.ok) {
+        const data = await response.json();
+        setMajors(data);
+      }
+    } catch (error) {
+      console.error('获取专业列表失败:', error);
+    }
+  };
+
+  const generateTopics = async () => {
+    if (!selectedMajor) {
+      setError('请选择一个专业');
+      return;
+    }
+
+    setIsGenerating(true);
+    setError('');
+    setGenerationResult(null);
+
+    try {
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          major: selectedMajor,
+          algorithm,
+          count,
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setGenerationResult(result);
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || '生成失败');
+      }
+    } catch (error) {
+      setError('网络请求失败');
+      console.error('生成题目失败:', error);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  return (
+    <div className='min-h-screen bg-gray-50 py-8'>
+      <div className='mx-auto max-w-4xl p-6'>
+        <h1 className='mb-8 text-center text-3xl font-bold text-gray-800'>
+          毕业设计题目生成器
+        </h1>
+
+        <div className='mb-6 rounded-lg bg-white p-6 shadow-md'>
+          <h2 className='mb-4 text-xl font-semibold text-gray-700'>生成参数</h2>
+
+          {/* 专业选择 */}
+          <div className='mb-4'>
+            <label className='mb-2 block text-sm font-medium text-gray-700'>
+              选择专业
+            </label>
+            <select
+              value={selectedMajor}
+              onChange={e => setSelectedMajor(e.target.value)}
+              className='w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500'
+            >
+              <option value=''>请选择专业</option>
+              {majors.map(major => (
+                <option key={major.major} value={major.major}>
+                  {major.major} ({major.sampleCount} 个样本,{' '}
+                  {major.hasModel ? '有模型' : '无模型'})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 算法选择 */}
+          <div className='mb-4'>
+            <label className='mb-2 block text-sm font-medium text-gray-700'>
+              生成算法
+            </label>
+            <div className='flex space-x-4'>
+              {(['markov', 'template', 'hybrid'] as const).map(alg => (
+                <label key={alg} className='flex items-center'>
+                  <input
+                    type='radio'
+                    name='algorithm'
+                    value={alg}
+                    checked={algorithm === alg}
+                    onChange={e =>
+                      setAlgorithm(e.target.value as typeof algorithm)
+                    }
+                    className='mr-2'
+                  />
+                  <span className='text-sm'>
+                    {alg === 'markov' && '马尔科夫链'}
+                    {alg === 'template' && '模板生成'}
+                    {alg === 'hybrid' && '混合算法'}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* 生成数量 */}
+          <div className='mb-4'>
+            <label className='mb-2 block text-sm font-medium text-gray-700'>
+              生成数量
+            </label>
+            <input
+              type='number'
+              min='1'
+              max='20'
+              value={count}
+              onChange={e => setCount(parseInt(e.target.value) || 5)}
+              className='w-24 rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500'
             />
-            Deploy now
-          </a>
-          <a
-            className='flex h-10 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-4 text-sm font-medium transition-colors hover:border-transparent hover:bg-[#f2f2f2] sm:h-12 sm:w-auto sm:px-5 sm:text-base md:w-[158px] dark:border-white/[.145] dark:hover:bg-[#1a1a1a]'
-            href='https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app'
-            target='_blank'
-            rel='noopener noreferrer'
+          </div>
+
+          {/* 生成按钮 */}
+          <button
+            onClick={generateTopics}
+            disabled={isGenerating || !selectedMajor}
+            className='w-full rounded-md bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-400'
           >
-            Read our docs
-          </a>
+            {isGenerating ? '生成中...' : '生成题目'}
+          </button>
+
+          {/* 错误信息 */}
+          {error && (
+            <div className='mt-4 rounded border border-red-400 bg-red-100 p-3 text-red-700'>
+              {error}
+            </div>
+          )}
         </div>
-      </main>
-      <footer className='row-start-3 flex flex-wrap items-center justify-center gap-[24px]'>
-        <a
-          className='flex items-center gap-2 hover:underline hover:underline-offset-4'
-          href='https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app'
-          target='_blank'
-          rel='noopener noreferrer'
-        >
-          <Image
-            aria-hidden
-            src='/file.svg'
-            alt='File icon'
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className='flex items-center gap-2 hover:underline hover:underline-offset-4'
-          href='https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app'
-          target='_blank'
-          rel='noopener noreferrer'
-        >
-          <Image
-            aria-hidden
-            src='/window.svg'
-            alt='Window icon'
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className='flex items-center gap-2 hover:underline hover:underline-offset-4'
-          href='https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app'
-          target='_blank'
-          rel='noopener noreferrer'
-        >
-          <Image
-            aria-hidden
-            src='/globe.svg'
-            alt='Globe icon'
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        {/* 生成结果 */}
+        {generationResult && (
+          <div className='rounded-lg bg-white p-6 shadow-md'>
+            <h2 className='mb-4 text-xl font-semibold text-gray-700'>
+              生成结果
+            </h2>
+
+            {/* 统计信息 */}
+            <div className='mb-4 rounded-md bg-gray-100 p-4'>
+              <div className='grid grid-cols-2 gap-4 text-sm md:grid-cols-4'>
+                <div>
+                  <span className='font-medium'>生成数量:</span>{' '}
+                  {generationResult.stats.totalGenerated}
+                </div>
+                <div>
+                  <span className='font-medium'>有效题目:</span>{' '}
+                  {generationResult.stats.validTopics}
+                </div>
+                <div>
+                  <span className='font-medium'>平均质量:</span>{' '}
+                  {generationResult.stats.averageQuality.toFixed(2)}
+                </div>
+                <div>
+                  <span className='font-medium'>生成时间:</span>{' '}
+                  {generationResult.stats.generationTime}ms
+                </div>
+              </div>
+
+              {generationResult.majorInfo && (
+                <div className='mt-2 text-sm text-gray-600'>
+                  专业: {generationResult.majorInfo.major} | 样本数:{' '}
+                  {generationResult.majorInfo.sampleCount} | 专业模型:{' '}
+                  {generationResult.majorInfo.hasSpecificModel ? '是' : '否'}
+                </div>
+              )}
+            </div>
+
+            {/* 生成的题目 */}
+            <div>
+              <h3 className='mb-3 font-medium text-gray-700'>生成的题目:</h3>
+              <ol className='space-y-2'>
+                {generationResult.topics.map((topic, index) => (
+                  <li
+                    key={index}
+                    className='rounded-r border-l-4 border-blue-400 bg-blue-50 p-3'
+                  >
+                    <span className='font-medium text-blue-800'>
+                      {index + 1}.
+                    </span>
+                    <span className='ml-2 text-gray-800'>{topic}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

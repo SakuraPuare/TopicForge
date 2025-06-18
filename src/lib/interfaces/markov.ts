@@ -24,32 +24,15 @@ export interface StateTransition {
  * 专业特定的马尔科夫链数据
  */
 export interface MajorSpecificChain {
-  major: string;
   transitionTable: Map<string, Map<string, number>>;
-  sampleCount: number;
-  qualityStats: {
+  startTokens: Set<string>;
+  endTokens: Set<string>;
+  sampleCount?: number;
+  qualityStats?: {
     high: number;
     medium: number;
     low: number;
   };
-}
-
-/**
- * 马尔科夫链统计信息接口
- */
-export interface MarkovStats {
-  stateCount: number;
-  totalTransitions: number;
-  averageTransitionsPerState: number;
-  maxTransitionsPerState: number;
-  config: MarkovConfig;
-  majorSpecificStats?: Map<
-    string,
-    {
-      stateCount: number;
-      sampleCount: number;
-    }
-  >;
 }
 
 /**
@@ -58,7 +41,25 @@ export interface MarkovStats {
 export interface GenerationOptions {
   count: number;
   major?: string;
+  startWord?: string;
+  temperature?: number;
+  majorId?: string;
+  minLength?: number;
+  maxLength?: number;
+  themes?: string[];
   preferredStartTokens?: string[];
   preferredEndTokens?: string[];
   qualityThreshold?: number;
+}
+
+/**
+ * 马尔科夫链统计信息接口
+ */
+export interface MarkovStats {
+  generalStateCount: number;
+  majorSpecificStats: {
+    [key: string]: {
+      stateCount: number;
+    };
+  };
 }

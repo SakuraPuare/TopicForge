@@ -79,9 +79,9 @@ export const STOP_WORDS = new Set([
 /**
  * 标点符号正则表达式
  */
-export const PUNCTUATION_REGEX = /^[，。！？；：""''（）【】《》、\s]+$/;
+export const PUNCTUATION_REGEX = /[，。、：；！？]/;
 
 /**
- * 纯数字正则表达式
+ * 数字正则表达式
  */
 export const NUMBER_REGEX = /^\d+$/;
