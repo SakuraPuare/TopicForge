@@ -42,8 +42,10 @@ export class DataService {
       });
 
       return {
-        majors: majors.map(m => m.major!).filter(Boolean),
-        years: years.map(y => y.year!),
+        majors: majors
+          .map((m: { major: string | null }) => m.major!)
+          .filter(Boolean),
+        years: years.map((y: { year: number | null }) => y.year!),
       };
     } catch (error) {
       console.error('获取专业和年份数据失败:', error);
@@ -77,7 +79,7 @@ export class DataService {
     });
 
     return majors
-      .map(item => item.major)
+      .map((item: { major: string | null }) => item.major)
       .filter((major): major is string => major !== null && major !== '')
       .sort();
   }
@@ -102,9 +104,9 @@ export class DataService {
     });
 
     return years
-      .map(item => item.year)
+      .map((item: { year: number | null }) => item.year)
       .filter((year): year is number => year !== null)
-      .sort((a, b) => b - a);
+      .sort((a: number, b: number) => b - a);
   }
 
   /**
@@ -128,9 +130,9 @@ export class DataService {
     });
 
     return years
-      .map(item => item.year)
+      .map((item: { year: number | null }) => item.year)
       .filter((year): year is number => year !== null)
-      .sort((a, b) => b - a);
+      .sort((a: number, b: number) => b - a);
   }
 
   /**
@@ -251,19 +253,28 @@ export class DataService {
         },
       });
 
-      return sessions.map(session => {
-        const topics = JSON.parse(session.topics as string) as string[];
-        return {
-          id: session.id,
-          algorithm: session.algorithm,
-          params: JSON.parse(session.params as string) as GenerationParams,
-          stats: JSON.parse(
-            session.stats as string
-          ) as GenerationResult['stats'],
-          createdAt: session.createdAt,
-          topicCount: topics.length,
-        };
-      });
+      return sessions.map(
+        (session: {
+          id: string;
+          algorithm: string;
+          params: unknown;
+          stats: unknown;
+          topics: unknown;
+          createdAt: Date;
+        }) => {
+          const topics = JSON.parse(session.topics as string) as string[];
+          return {
+            id: session.id,
+            algorithm: session.algorithm,
+            params: JSON.parse(session.params as string) as GenerationParams,
+            stats: JSON.parse(
+              session.stats as string
+            ) as GenerationResult['stats'],
+            createdAt: session.createdAt,
+            topicCount: topics.length,
+          };
+        }
+      );
     } catch (error) {
       console.error('获取历史记录失败:', error);
       return [];

@@ -513,7 +513,9 @@ class ChaoxingCrawler {
         },
       });
 
-      const existingTitleSet = new Set(existingTitles.map(item => item.title));
+      const existingTitleSet = new Set(
+        existingTitles.map((item: { title: string }) => item.title)
+      );
 
       // 筛选出新数据
       const newPapers = validPapers.filter(paper => {

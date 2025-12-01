@@ -72,14 +72,14 @@ async function getMajorsAndYears() {
   ]);
 
   const majorList = majors
-    .map(item => item.major)
+    .map((item: { major: string | null }) => item.major)
     .filter((major): major is string => major !== null && major !== '')
     .sort();
 
   const yearList = years
-    .map(item => item.year)
+    .map((item: { year: number | null }) => item.year)
     .filter((year): year is number => year !== null)
-    .sort((a, b) => b - a);
+    .sort((a: number, b: number) => b - a);
 
   return { majors: majorList, years: yearList };
 }

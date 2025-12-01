@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, KeywordStats } from '@prisma/client';
 import { textProcessor } from './text-processor.service';
 import { markovChainService } from './markov-chain.service';
 import { templateGenerator } from './template-generator.service';
@@ -731,7 +731,7 @@ export class TopicGeneratorService {
       markovStats: markovChainService.getStats(),
       templateStats: templateGenerator.getStats(),
       keywordStats: {
-        topKeywords: topKeywords.map(k => ({
+        topKeywords: topKeywords.map((k: KeywordStats) => ({
           keyword: k.keyword,
           frequency: k.frequency,
         })),

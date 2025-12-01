@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, MarkovChain, MajorMarkovChain } from '@prisma/client';
 import { textProcessor } from './text-processor.service';
 import { ProcessedTopic } from '../interfaces/text-processing';
 import {
@@ -351,7 +351,7 @@ export class MarkovChainService {
       // 加载通用马尔科夫链
       const generalChains = await prisma.markovChain.findMany();
 
-      generalChains.forEach(chain => {
+      generalChains.forEach((chain: MarkovChain) => {
         if (!this.transitionTable.has(chain.currentWord)) {
           this.transitionTable.set(chain.currentWord, new Map());
         }
@@ -368,7 +368,7 @@ export class MarkovChainService {
         Array<{ currentWord: string; nextWord: string; frequency: number }>
       >();
 
-      majorChains.forEach(chain => {
+      majorChains.forEach((chain: MajorMarkovChain) => {
         if (!majorChainMap.has(chain.major)) {
           majorChainMap.set(chain.major, []);
         }

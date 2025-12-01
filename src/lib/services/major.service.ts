@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Major } from '@prisma/client';
 import { MajorInfo } from '../interfaces/generation';
 import { MAJOR_SPECIFIC_TECH_DICT } from '../constants/tech-dict';
 
@@ -34,11 +34,16 @@ export class MajorService {
 
       // 从专业表中获取额外信息
       const majorInfos = await prisma.major.findMany();
-      const majorInfoMap = new Map(majorInfos.map(m => [m.name, m]));
+      const majorInfoMap = new Map<string, Major>(
+        majorInfos.map((m: Major) => [m.name, m])
+      );
 
       return topicMajors
-        .filter(m => m.major !== null)
-        .map(m => {
+        .filter(
+          (m: { major: string | null; _count: { major: number } }) =>
+            m.major !== null
+        )
+        .map((m: { major: string | null; _count: { major: number } }) => {
           const majorInfo = majorInfoMap.get(m.major!);
           return {
             major: m.major!,

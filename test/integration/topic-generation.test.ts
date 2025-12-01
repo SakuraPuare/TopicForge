@@ -3,6 +3,7 @@
  */
 
 import { describe, test, expect, beforeEach } from '@jest/globals';
+import { GeneratedTopic } from '@prisma/client';
 import { topicGeneratorService } from '../../src/lib/services/topic-generator.service';
 import { prisma } from './setup';
 
@@ -134,7 +135,7 @@ describe('TopicGeneration Integration', () => {
       console.log('查询到的生成历史记录数量:', savedTopics.length);
       expect(savedTopics).toHaveLength(2);
 
-      savedTopics.forEach(topic => {
+      savedTopics.forEach((topic: GeneratedTopic) => {
         expect(topic.algorithm).toBe('template');
         expect(topic.content).toBeTruthy();
       });

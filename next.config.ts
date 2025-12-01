@@ -1,6 +1,9 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  // 空的 Turbopack 配置以消除警告 (Next.js 16+)
+  turbopack: {},
+
   // Webpack 配置用于生产构建
   webpack: (config, { isServer }) => {
     // 配置忽略 nodejieba 相关的问题模块

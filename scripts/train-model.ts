@@ -52,11 +52,16 @@ async function main() {
     });
 
     console.log('   前10个专业分布:');
-    majorStats.forEach((stat, index) => {
-      console.log(
-        `   ${index + 1}. ${stat.major}: ${stat._count.major.toLocaleString()} 个题目`
-      );
-    });
+    majorStats.forEach(
+      (
+        stat: { major: string | null; _count: { major: number } },
+        index: number
+      ) => {
+        console.log(
+          `   ${index + 1}. ${stat.major}: ${stat._count.major.toLocaleString()} 个题目`
+        );
+      }
+    );
     console.log();
 
     // 3. 优化训练模型 - 使用更高效的配置
