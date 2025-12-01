@@ -3,6 +3,7 @@
 import { PrismaClient } from '@prisma/client';
 import { TopicGeneratorService } from '../src/lib/services/topic-generator.service';
 import { markovChainService } from '../src/lib/services/markov-chain.service';
+import { precompute } from './precompute';
 
 const prisma = new PrismaClient();
 const topicGenerator = new TopicGeneratorService();
@@ -139,9 +140,13 @@ async function main() {
       `   ✓ 更新了 ${updateResult.count.toLocaleString()} 条记录，耗时 ${updateTime}ms`
     );
 
-    console.log('\n✅ 模型训练完成！');
+    console.log('\n✅ 马尔科夫链训练完成！');
 
-    // 8. 显示系统统计
+    // 8. 运行预处理（构建专业类别映射和预计算模型）
+    console.log('\n🔮 开始预处理（构建类别映射和预计算模型）...');
+    await precompute();
+
+    // 9. 显示系统统计
     console.log('\n📊 系统统计信息...');
     const systemStats = await topicGenerator.getSystemStats();
     console.log(

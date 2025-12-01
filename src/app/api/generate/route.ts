@@ -7,11 +7,35 @@ import type { GenerationParams } from '../../../lib/interfaces/generation';
 const generateRequestSchema = z.object({
   major: z.string().optional(),
   year: z.string().optional(),
+  schools: z.array(z.string()).optional(),
+  keywords: z.array(z.string()).optional(),
+  requiredKeywords: z.array(z.string()).optional(),
+  excludedKeywords: z.array(z.string()).optional(),
   algorithm: z.enum(['markov', 'template', 'hybrid'], {
     errorMap: () => ({ message: '请选择有效的生成算法' }),
   }),
   count: z.number().min(1).max(50, '生成数量必须在1-50之间'),
 });
+
+/**
+ * 获取自适应质量阈值
+ * @param algorithm 算法类型
+ * @returns 质量阈值
+ */
+function getAdaptiveQualityThreshold(
+  algorithm?: 'markov' | 'template' | 'hybrid'
+): number {
+  switch (algorithm) {
+    case 'markov':
+      return 0.5;
+    case 'template':
+      return 0.6;
+    case 'hybrid':
+      return 0.55;
+    default:
+      return 0.5;
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,15 +56,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { major, year, algorithm, count } = validationResult.data;
+    const {
+      major,
+      year,
+      schools,
+      keywords,
+      requiredKeywords,
+      excludedKeywords,
+      algorithm,
+      count,
+    } = validationResult.data;
 
     // 3. 构建生成参数
     const params: GenerationParams = {
       major: major && major.trim() !== '' ? major.trim() : undefined,
       year: year && year !== 'all' ? year : undefined,
+      schools: schools && schools.length > 0 ? schools : undefined,
+      keywords: keywords && keywords.length > 0 ? keywords : undefined,
+      requiredKeywords:
+        requiredKeywords && requiredKeywords.length > 0
+          ? requiredKeywords
+          : undefined,
+      excludedKeywords:
+        excludedKeywords && excludedKeywords.length > 0
+          ? excludedKeywords
+          : undefined,
       algorithm,
       count,
-      qualityThreshold: 0.15,
+      qualityThreshold: getAdaptiveQualityThreshold(algorithm),
       saveToHistory: true,
     };
 

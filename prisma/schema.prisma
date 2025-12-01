@@ -120,3 +120,59 @@ model MajorMarkovChain {
   @@unique([major, currentWord, nextWord])
   @@map("major_markov_chains")
 }
+
+// 预计算模型表 - 存储各级模型的预计算数据
+model PrecomputedModel {
+  id              String   @id @default(cuid())
+
+  // 模型标识
+  scope           String   // 'major' | 'category' | 'general'
+  name            String   // 专业名/类别名，general时为'_global'
+
+  // 预计算词汇（JSON存储）
+  startTokens     Json     // ["基于", "关于", ...] 开始词列表
+  endTokens       Json     // ["系统", "研究", ...] 结束词列表
+  highFreqWords   Json     // ["设计", "分析", ...] 高频词Top50
+
+  // 模型统计
+  sampleCount     Int      // 训练样本数
+  stateCount      Int      // 马尔科夫状态数
+  transitionCount Int      // 转移总数
+
+  // 回退配置
+  fallbackTo      String?  // 回退目标：类别名或'_global'
+  isReady         Boolean  @default(false)  // 是否可用于生成
+
+  // 质量信息
+  avgQuality      Float?   // 平均质量分
+  qualityDistribution Json? // {high: n, medium: n, low: n}
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([scope, name])
+  @@index([scope])
+  @@index([isReady])
+  @@map("precomputed_models")
+}
+
+// 专业类别映射表
+model MajorCategory {
+  id        String   @id @default(cuid())
+  major     String   @unique  // 专业名称
+  category  String            // 所属类别
+
+  @@index([category])
+  @@map("major_categories")
+}
+
+// 生成配置表
+model GenerationConfig {
+  id          String   @id @default(cuid())
+  key         String   @unique  // 配置键
+  value       Json              // 配置值
+  description String?           // 配置说明
+  updatedAt   DateTime @updatedAt
+
+  @@map("generation_config")
+}

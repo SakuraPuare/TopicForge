@@ -23,11 +23,16 @@ import {
   Settings,
   Zap,
   AlertCircle,
+  X,
+  Plus,
 } from 'lucide-react';
+import { Input } from '../../components/ui/input';
+import { Badge } from '../../components/ui/badge';
 
 interface GenerateClientProps {
   majors: string[];
   years: number[];
+  schools: string[];
 }
 
 // 算法选项配置
@@ -60,12 +65,24 @@ const countOptions = [
   { value: 15, label: '15 个' },
 ] as const;
 
-export default function GenerateClient({ majors, years }: GenerateClientProps) {
+export default function GenerateClient({
+  majors,
+  years,
+  schools,
+}: GenerateClientProps) {
   const router = useRouter();
 
   // 表单状态
   const [selectedMajor, setSelectedMajor] = useState<string>('all');
   const [selectedYear, setSelectedYear] = useState<string>('all');
+  const [selectedSchools, setSelectedSchools] = useState<string[]>([]);
+  const [preferredKeywords, setPreferredKeywords] = useState<string[]>([]);
+  const [requiredKeywords, setRequiredKeywords] = useState<string[]>([]);
+  const [excludedKeywords, setExcludedKeywords] = useState<string[]>([]);
+  const [keywordInput, setKeywordInput] = useState<string>('');
+  const [keywordType, setKeywordType] = useState<
+    'preferred' | 'required' | 'excluded'
+  >('preferred');
   const [algorithm, setAlgorithm] = useState<string>('markov');
   const [count, setCount] = useState<number>(5);
 
@@ -87,6 +104,11 @@ export default function GenerateClient({ majors, years }: GenerateClientProps) {
     ...years.map(year => ({ value: year.toString(), label: year.toString() })),
   ];
 
+  // 构建学校选项数据
+  const schoolOptions: SearchableSelectOption[] = schools
+    .filter(school => school && school.trim() !== '')
+    .map(school => ({ value: school, label: school }));
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -102,6 +124,13 @@ export default function GenerateClient({ majors, years }: GenerateClientProps) {
         body: JSON.stringify({
           major: selectedMajor === 'all' ? undefined : selectedMajor,
           year: selectedYear === 'all' ? undefined : selectedYear,
+          schools: selectedSchools.length > 0 ? selectedSchools : undefined,
+          keywords:
+            preferredKeywords.length > 0 ? preferredKeywords : undefined,
+          requiredKeywords:
+            requiredKeywords.length > 0 ? requiredKeywords : undefined,
+          excludedKeywords:
+            excludedKeywords.length > 0 ? excludedKeywords : undefined,
           algorithm,
           count,
         }),
@@ -127,9 +156,38 @@ export default function GenerateClient({ majors, years }: GenerateClientProps) {
   const handleReset = () => {
     setSelectedMajor('all');
     setSelectedYear('all');
+    setSelectedSchools([]);
+    setPreferredKeywords([]);
+    setRequiredKeywords([]);
+    setExcludedKeywords([]);
+    setKeywordInput('');
     setAlgorithm('markov');
     setCount(5);
     setError('');
+  };
+
+  const handleAddKeyword = () => {
+    if (!keywordInput.trim()) return;
+
+    const keyword = keywordInput.trim();
+    switch (keywordType) {
+      case 'preferred':
+        if (!preferredKeywords.includes(keyword)) {
+          setPreferredKeywords([...preferredKeywords, keyword]);
+        }
+        break;
+      case 'required':
+        if (!requiredKeywords.includes(keyword)) {
+          setRequiredKeywords([...requiredKeywords, keyword]);
+        }
+        break;
+      case 'excluded':
+        if (!excludedKeywords.includes(keyword)) {
+          setExcludedKeywords([...excludedKeywords, keyword]);
+        }
+        break;
+    }
+    setKeywordInput('');
   };
 
   return (
@@ -187,6 +245,47 @@ export default function GenerateClient({ majors, years }: GenerateClientProps) {
                 />
               </div>
 
+              {/* 学校选择 */}
+              <div className='space-y-3 sm:col-span-2 lg:col-span-4'>
+                <Label htmlFor='schools' className='text-sm font-medium'>
+                  学校筛选（可选，可多选）
+                </Label>
+                <div className='flex flex-wrap gap-2'>
+                  {selectedSchools.map(school => (
+                    <Badge
+                      key={school}
+                      variant='secondary'
+                      className='cursor-pointer px-3 py-1'
+                      onClick={() => {
+                        if (!isLoading) {
+                          setSelectedSchools(prev =>
+                            prev.filter(s => s !== school)
+                          );
+                        }
+                      }}
+                    >
+                      {school}
+                      <span className='ml-2'>×</span>
+                    </Badge>
+                  ))}
+                  <SearchableSelect
+                    options={schoolOptions.filter(
+                      opt => !selectedSchools.includes(opt.value)
+                    )}
+                    value=''
+                    onValueChange={value => {
+                      if (value && !selectedSchools.includes(value)) {
+                        setSelectedSchools(prev => [...prev, value]);
+                      }
+                    }}
+                    placeholder='添加学校...'
+                    searchPlaceholder='搜索学校...'
+                    emptyText='未找到相关学校'
+                    disabled={isLoading}
+                  />
+                </div>
+              </div>
+
               {/* 算法选择 */}
               <div className='space-y-3'>
                 <Label htmlFor='algorithm' className='text-sm font-medium'>
@@ -241,6 +340,138 @@ export default function GenerateClient({ majors, years }: GenerateClientProps) {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            {/* 关键词约束 */}
+            <div className='space-y-4'>
+              <Label className='text-sm font-medium'>关键词约束（可选）</Label>
+
+              {/* 关键词输入 */}
+              <div className='flex gap-2'>
+                <Select
+                  value={keywordType}
+                  onValueChange={(
+                    value: 'preferred' | 'required' | 'excluded'
+                  ) => setKeywordType(value)}
+                  disabled={isLoading}
+                >
+                  <SelectTrigger className='w-32'>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='preferred'>偏好</SelectItem>
+                    <SelectItem value='required'>必须</SelectItem>
+                    <SelectItem value='excluded'>排除</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  value={keywordInput}
+                  onChange={e => setKeywordInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddKeyword();
+                    }
+                  }}
+                  placeholder='输入关键词后按回车'
+                  disabled={isLoading}
+                  className='flex-1'
+                />
+                <Button
+                  type='button'
+                  onClick={handleAddKeyword}
+                  disabled={isLoading || !keywordInput.trim()}
+                  size='sm'
+                >
+                  <Plus className='h-4 w-4' />
+                </Button>
+              </div>
+
+              {/* 显示已添加的关键词 */}
+              {(preferredKeywords.length > 0 ||
+                requiredKeywords.length > 0 ||
+                excludedKeywords.length > 0) && (
+                <div className='space-y-2'>
+                  {preferredKeywords.length > 0 && (
+                    <div>
+                      <Label className='text-muted-foreground mb-1 block text-xs'>
+                        偏好关键词：
+                      </Label>
+                      <div className='flex flex-wrap gap-2'>
+                        {preferredKeywords.map(keyword => (
+                          <Badge
+                            key={keyword}
+                            variant='secondary'
+                            className='cursor-pointer'
+                            onClick={() => {
+                              if (!isLoading) {
+                                setPreferredKeywords(prev =>
+                                  prev.filter(k => k !== keyword)
+                                );
+                              }
+                            }}
+                          >
+                            {keyword}
+                            <X className='ml-1 h-3 w-3' />
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {requiredKeywords.length > 0 && (
+                    <div>
+                      <Label className='text-muted-foreground mb-1 block text-xs'>
+                        必须包含：
+                      </Label>
+                      <div className='flex flex-wrap gap-2'>
+                        {requiredKeywords.map(keyword => (
+                          <Badge
+                            key={keyword}
+                            variant='default'
+                            className='cursor-pointer'
+                            onClick={() => {
+                              if (!isLoading) {
+                                setRequiredKeywords(prev =>
+                                  prev.filter(k => k !== keyword)
+                                );
+                              }
+                            }}
+                          >
+                            {keyword}
+                            <X className='ml-1 h-3 w-3' />
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {excludedKeywords.length > 0 && (
+                    <div>
+                      <Label className='text-muted-foreground mb-1 block text-xs'>
+                        必须排除：
+                      </Label>
+                      <div className='flex flex-wrap gap-2'>
+                        {excludedKeywords.map(keyword => (
+                          <Badge
+                            key={keyword}
+                            variant='destructive'
+                            className='cursor-pointer'
+                            onClick={() => {
+                              if (!isLoading) {
+                                setExcludedKeywords(prev =>
+                                  prev.filter(k => k !== keyword)
+                                );
+                              }
+                            }}
+                          >
+                            {keyword}
+                            <X className='ml-1 h-3 w-3' />
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* 算法说明 */}

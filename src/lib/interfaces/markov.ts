@@ -50,6 +50,10 @@ export interface GenerationOptions {
   preferredStartTokens?: string[];
   preferredEndTokens?: string[];
   qualityThreshold?: number;
+  targetYear?: number; // 目标年份，用于年份权重计算
+  yearDecayFactor?: number; // 年份衰减因子，默认 0.85
+  schools?: string[]; // 学校筛选（多选）
+  preferredKeywords?: string[]; // 偏好关键词，生成时提高包含这些词的权重
 }
 
 /**

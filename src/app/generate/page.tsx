@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 };
 
 async function getMajorsAndYears() {
-  const [majors, years] = await Promise.all([
+  const [majors, years, schools] = await Promise.all([
     prisma.graduationTopic.findMany({
       where: {
         major: {
@@ -40,6 +40,17 @@ async function getMajorsAndYears() {
         year: 'desc',
       },
     }),
+    prisma.graduationTopic.findMany({
+      where: {
+        school: {
+          not: null,
+        },
+      },
+      select: {
+        school: true,
+      },
+      distinct: ['school'],
+    }),
   ]);
 
   const majorList = majors
@@ -52,12 +63,17 @@ async function getMajorsAndYears() {
     .filter((year): year is number => year !== null)
     .sort((a: number, b: number) => b - a);
 
-  return { majors: majorList, years: yearList };
+  const schoolList = schools
+    .map((item: { school: string | null }) => item.school)
+    .filter((school): school is string => school !== null && school !== '')
+    .sort();
+
+  return { majors: majorList, years: yearList, schools: schoolList };
 }
 
 export default async function GeneratePage() {
   // 使用直接的数据库查询方式获取数据，参考 topics/page.tsx 的实现
-  const [{ majors, years }, recentSessions] = await Promise.all([
+  const [{ majors, years, schools }, recentSessions] = await Promise.all([
     getMajorsAndYears(),
     dataService.getRecentGenerationSessions(10),
   ]);
@@ -114,7 +130,11 @@ export default async function GeneratePage() {
                   </div>
                 }
               >
-                <GenerateClient majors={majors} years={years} />
+                <GenerateClient
+                  majors={majors}
+                  years={years}
+                  schools={schools}
+                />
               </Suspense>
             </TabsContent>
 

@@ -71,8 +71,15 @@ export class TopicGeneratorService {
       // 同步专业信息
       await majorService.syncMajorInfoFromTopics();
 
-      // 获取训练数据
-      const topics = await this.getTrainingData(major);
+      // 获取训练数据（如果配置中有年份，使用年份过滤）
+      const targetYear = config.targetYear
+        ? parseInt(String(config.targetYear), 10)
+        : undefined;
+      const topics = await this.getTrainingData(
+        major,
+        targetYear,
+        config.schools
+      );
       if (topics.length === 0) {
         const errorMessage = major
           ? `专业 "${major}" 没有可用的训练数据`
@@ -133,9 +140,17 @@ export class TopicGeneratorService {
   /**
    * 获取训练数据
    * @param major 可选的专业过滤器
+   * @param targetYear 目标年份（用于年份权重筛选）
+   * @param schools 学校筛选（多选）
+   * @param yearRange 年份范围（默认 ±3 年）
    * @returns 原始题目数据
    */
-  private async getTrainingData(major?: string): Promise<
+  private async getTrainingData(
+    major?: string,
+    targetYear?: number,
+    schools?: string[],
+    yearRange: number = 3
+  ): Promise<
     Array<{
       id: string;
       title: string;
@@ -144,11 +159,29 @@ export class TopicGeneratorService {
       year?: number | null;
     }>
   > {
-    const whereClause: { major?: string; processed?: boolean } = {};
+    const whereClause: {
+      major?: string;
+      processed?: boolean;
+      year?: { gte?: number; lte?: number };
+      school?: { in: string[] };
+    } = {};
 
     // 如果指定了专业，添加过滤条件
     if (major) {
       whereClause.major = major;
+    }
+
+    // 如果指定了学校，添加过滤条件
+    if (schools && schools.length > 0) {
+      whereClause.school = { in: schools };
+    }
+
+    // 如果指定了目标年份，添加年份范围过滤
+    if (targetYear) {
+      whereClause.year = {
+        gte: targetYear - yearRange,
+        lte: targetYear + yearRange,
+      };
     }
 
     // 优先获取未处理的题目
@@ -164,7 +197,7 @@ export class TopicGeneratorService {
     });
 
     console.log(
-      `获取到 ${topics.length} 个未处理的题目${major ? `（专业：${major}）` : ''}`
+      `获取到 ${topics.length} 个未处理的题目${major ? `（专业：${major}）` : ''}${targetYear ? `（年份：${targetYear} ±${yearRange}）` : ''}${schools && schools.length > 0 ? `（学校：${schools.join(', ')}）` : ''}`
     );
 
     // 如果没有未处理的题目，使用所有题目
@@ -535,6 +568,9 @@ export class TopicGeneratorService {
     const endTime = Date.now();
     const generationTime = endTime - startTime;
 
+    // 获取使用的模型信息
+    const modelInfo = markovChainService.getLastUsedModelInfo();
+
     // 计算真实的平均质量
     let avgQuality = 0;
     if (generatedTopics.length > 0) {
@@ -542,9 +578,25 @@ export class TopicGeneratorService {
       const processedTopics = generatedTopics.map(
         topic => textProcessor.batchProcess([topic])[0]
       );
-      avgQuality =
+      const rawAvgQuality =
         processedTopics.reduce((sum, topic) => sum + topic.quality, 0) /
         processedTopics.length;
+
+      // 应用质量因子（低样本专业惩罚）
+      const qualityFactor = modelInfo?.qualityFactor ?? 1.0;
+      avgQuality = rawAvgQuality * qualityFactor;
+    }
+
+    // 如果有专业，获取更详细的模型信息
+    if (config.major && majorInfoResult) {
+      const majorModelInfo = markovChainService.getMajorModelInfo(config.major);
+      majorInfo = {
+        major: config.major,
+        sampleCount: majorInfoResult.sampleCount,
+        hasSpecificModel: majorInfoResult.hasModel,
+        category: majorModelInfo.category || undefined,
+        fallbackTo: majorModelInfo.fallbackTo,
+      };
     }
 
     const result: GenerationResult = {
@@ -557,14 +609,24 @@ export class TopicGeneratorService {
         algorithm: config.algorithm,
         major: config.major,
         fallbackUsed,
+        modelType: modelInfo?.modelType,
+        modelName: modelInfo?.modelName,
+        qualityFactor: modelInfo?.qualityFactor,
       },
       algorithm: config.algorithm,
       params: config,
       majorInfo,
     };
 
+    const modelTypeLabel =
+      modelInfo?.modelType === 'major'
+        ? '专业模型'
+        : modelInfo?.modelType === 'category'
+          ? `类别模型(${modelInfo.modelName})`
+          : '通用模型';
+
     console.log(
-      `生成完成! 耗时: ${generationTime}ms, 题目数: ${generatedTopics.length}, 平均质量: ${avgQuality.toFixed(2)}/5.0`
+      `生成完成! 耗时: ${generationTime}ms, 题目数: ${generatedTopics.length}, 平均质量: ${avgQuality.toFixed(2)}/5.0, 使用: ${modelTypeLabel}`
     );
 
     return result;
@@ -622,10 +684,58 @@ export class TopicGeneratorService {
   private async generateWithMarkov(
     params: GenerationParams
   ): Promise<string[]> {
-    return markovChainService.generate({
+    // 将年份字符串转换为数字
+    const targetYear = params.year ? parseInt(params.year, 10) : undefined;
+
+    const topics = await markovChainService.generate({
       count: params.count || 5,
       major: params.major,
       qualityThreshold: params.qualityThreshold,
+      targetYear,
+      schools: params.schools,
+      preferredKeywords: params.keywords,
+    });
+
+    // 应用关键词约束过滤
+    return this.filterByKeywordConstraints(topics, params);
+  }
+
+  /**
+   * 根据关键词约束过滤题目
+   * @param topics 题目数组
+   * @param params 生成参数
+   * @returns 过滤后的题目
+   */
+  private filterByKeywordConstraints(
+    topics: string[],
+    params: GenerationParams
+  ): string[] {
+    const { requiredKeywords, excludedKeywords } = params;
+
+    return topics.filter(topic => {
+      const topicLower = topic.toLowerCase();
+
+      // 必须包含所有必需关键词
+      if (requiredKeywords && requiredKeywords.length > 0) {
+        const hasAllRequired = requiredKeywords.every(keyword =>
+          topicLower.includes(keyword.toLowerCase())
+        );
+        if (!hasAllRequired) {
+          return false;
+        }
+      }
+
+      // 不能包含任何排除关键词
+      if (excludedKeywords && excludedKeywords.length > 0) {
+        const hasExcluded = excludedKeywords.some(keyword =>
+          topicLower.includes(keyword.toLowerCase())
+        );
+        if (hasExcluded) {
+          return false;
+        }
+      }
+
+      return true;
     });
   }
 

@@ -24,6 +24,16 @@ export {
   TopicGeneratorService,
 } from './topic-generator.service';
 
+// 语义验证器服务
+export {
+  semanticValidator,
+  SemanticValidatorService,
+} from './semantic-validator.service';
+export type {
+  DomainCategory,
+  SemanticValidationResult,
+} from './semantic-validator.service';
+
 // 接口导出
 export type {
   ProcessedTopic,

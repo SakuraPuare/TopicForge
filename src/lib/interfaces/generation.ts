@@ -7,7 +7,10 @@ export interface GenerationParams {
   count?: number; // 生成数量，默认5
   major?: string; // 专业领域过滤
   year?: string; // 参考年份，'all'表示不限年份
+  schools?: string[]; // 学校筛选（多选）
   keywords?: string[]; // 关键词偏好
+  requiredKeywords?: string[]; // 必须包含的关键词
+  excludedKeywords?: string[]; // 必须排除的关键词
   algorithm?: 'markov' | 'template' | 'hybrid'; // 生成算法
   config?: Partial<MarkovConfig>; // 马尔科夫配置
   qualityThreshold?: number; // 质量阈值
@@ -28,6 +31,9 @@ export interface GenerationResult {
     algorithm: string; // 使用的算法
     major?: string; // 专业领域
     fallbackUsed: boolean; // 是否使用了备用算法
+    modelType?: 'major' | 'category' | 'general'; // 实际使用的模型类型
+    modelName?: string; // 实际使用的模型名称
+    qualityFactor?: number; // 质量因子（低样本专业惩罚系数）
   };
   algorithm: string; // 生成算法
   params?: GenerationParams; // 生成参数
@@ -35,6 +41,8 @@ export interface GenerationResult {
     major: string;
     sampleCount: number;
     hasSpecificModel: boolean;
+    category?: string; // 所属类别
+    fallbackTo?: string | null; // 回退目标
   };
 }
 
@@ -62,4 +70,6 @@ export interface TrainingConfig {
   majorSpecific?: boolean;
   qualityThreshold?: number;
   batchSize?: number;
+  targetYear?: number; // 目标年份，用于年份权重训练
+  schools?: string[]; // 学校筛选
 }
