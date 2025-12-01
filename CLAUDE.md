@@ -61,34 +61,60 @@ npm run train            # Train Markov chain models
 ### Core Structure
 
 ```
-src/
-├── app/                 # Next.js App Router pages and API routes
-│   ├── api/generate/    # Topic generation API endpoint
-│   ├── api/topics/      # Topics listing API endpoint
-│   ├── generate/        # Generation page
-│   └── topics/          # Topics browse page
-├── components/          # React components
-│   ├── ui/              # Radix UI-based component library
-│   └── layout/          # Layout components
-└── lib/                 # Core business logic
-    ├── services/        # Service layer (main logic)
-    ├── interfaces/      # TypeScript interfaces
-    ├── constants/       # Stop words, tech dictionaries
-    └── db.ts            # Prisma client singleton
+src/lib/
+├── core/                    # Dependency injection setup
+│   ├── container.ts         # tsyringe DI container configuration
+│   └── tokens.ts            # DI tokens for repository injection
+├── domain/                  # Domain interfaces
+│   └── interfaces/
+│       ├── repositories/    # Repository interfaces (IGraduationTopicRepository, etc.)
+│       └── services/        # Service interfaces (IDataService, etc.)
+├── infrastructure/          # Infrastructure implementations
+│   ├── database/            # Prisma client wrapper
+│   └── repositories/        # Repository implementations using Prisma
+├── services/                # Business logic services
+├── interfaces/              # Legacy TypeScript interfaces
+├── constants/               # Stop words, tech dictionaries
+└── db.ts                    # Backward-compatible Prisma access layer
 ```
+
+### Dependency Injection
+
+The project uses tsyringe for DI. Repositories are registered in `src/lib/core/container.ts`.
+
+```typescript
+// Getting a repository instance
+import { getGraduationTopicRepository } from '@/lib/db';
+const repo = getGraduationTopicRepository();
+const result = await repo.findById(id);
+```
+
+Repository methods return `Result<T>` objects with `success`, `data`, and `error` fields.
 
 ### Service Layer (`src/lib/services/`)
 
-The service layer implements the topic generation algorithms:
+Services implement topic generation algorithms and are exported as singletons:
 
 - **topic-generator.service.ts** - Main orchestrator that coordinates generation
 - **markov-chain.service.ts** - Markov chain algorithm (bi-gram/tri-gram)
 - **template-generator.service.ts** - Template-based generation with placeholders
 - **text-processor.service.ts** - Chinese NLP processing using nodejieba
 - **major.service.ts** - Academic major/field management
-- **data.service.ts** - Data persistence layer
+- **data.service.ts** - Data persistence using repositories
 
-Services are exported as singletons from `lib/services/index.ts`.
+Import services from `@/lib/services`.
+
+### Repository Layer (`src/lib/infrastructure/repositories/`)
+
+Repositories handle database operations:
+
+- **GraduationTopicRepository** - Raw thesis topics CRUD
+- **GenerationSessionRepository** - Generation results storage
+- **MarkovChainRepository** - Markov chain state transitions
+- **MajorRepository** - Academic major information
+- **KeywordStatsRepository** - Keyword frequency tracking
+
+All repositories extend `BaseRepository` and implement domain interfaces.
 
 ### Database Models (Prisma)
 
@@ -101,7 +127,7 @@ Key models in `prisma/schema.prisma`:
 - **MajorMarkovChain** - Field-specific Markov chains
 - **Major** - University major/field information
 
-Development uses SQLite; production uses MySQL.
+Development uses SQLite (`file:./dev.db`); production uses MySQL.
 
 ### Seed Data (`data/seeds/`)
 
@@ -116,15 +142,23 @@ Pre-built datasets for quick setup:
 
 ### TypeScript
 
-- Strict mode enabled; avoid `any` types (use `unknown`)
+- Strict mode with decorators enabled (`experimentalDecorators`, `emitDecoratorMetadata`)
+- Avoid `any` types (use `unknown`)
 - Explicit return types on functions
 - PascalCase for classes/interfaces, camelCase for functions/variables
 - kebab-case for file names (e.g., `text-processor.service.ts`)
+- Path alias: `@/*` maps to `./src/*`
+
+### Repository Pattern
+
+- All repositories return `Result<T>` objects for consistent error handling
+- Use `getXxxRepository()` functions from `@/lib/db` to access repositories
+- Repositories are registered in the DI container and resolved at runtime
 
 ### Prisma
 
 - Use transactions for multi-step operations
-- Soft delete via `deletedAt` timestamp
+- Soft delete via `deletedAt` timestamp where applicable
 - Avoid N+1 queries with proper `select`/`include`
 
 ### Testing
@@ -132,6 +166,7 @@ Pre-built datasets for quick setup:
 - Unit tests in `test/unit/` (node environment)
 - Integration tests in `test/integration/` (uses real database)
 - Component tests in `test/components/` (jsdom environment)
+- Use `createChildContainer()` and `resetContainer()` from container for test isolation
 
 ### Pre-commit
 
