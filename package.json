@@ -63,8 +63,10 @@
     "puppeteer": "^24.10.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "reflect-metadata": "^0.2.2",
     "sonner": "^2.0.5",
-    "tailwind-merge": "^3.3.1"
+    "tailwind-merge": "^3.3.1",
+    "tsyringe": "^4.10.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

@@ -1,4 +1,15 @@
+/**
+ * Database Client - 向后兼容层
+ *
+ * 此文件保持与旧代码的兼容性，同时使用新的 DI 容器
+ * 新代码应该直接从 container 获取 Repository 实例
+ */
+
+// 必须在所有其他导入之前导入 reflect-metadata
+import 'reflect-metadata';
+
 import { PrismaClient } from '@prisma/client';
+import { getDatabaseClient } from './core/container';
 
 declare global {
   // 在开发环境中防止热重载时创建多个PrismaClient实例
@@ -6,34 +17,34 @@ declare global {
 }
 
 /**
- * 创建 Prisma 客户端实例
- * 支持多环境配置
+ * 获取 Prisma 客户端实例
+ * 使用新的 DI 容器中的 DatabaseClient
  */
-function createPrismaClient() {
-  const isProduction = process.env.NODE_ENV === 'production';
-
-  return new PrismaClient({
-    log: isProduction ? ['error'] : ['query', 'info', 'warn', 'error'],
-    datasources: {
-      db: {
-        url: process.env.DATABASE_URL,
-      },
-    },
-  });
+function getPrismaClient(): PrismaClient {
+  return getDatabaseClient().prisma;
 }
 
-// 在测试环境中，优先使用全局设置的prisma实例（来自测试设置）
-const prisma = global.prisma || globalThis.prisma || createPrismaClient();
+// 延迟初始化，仅在首次访问时获取
+let _prisma: PrismaClient | null = null;
 
-if (process.env.NODE_ENV !== 'production') {
-  globalThis.prisma = prisma;
-}
-
-// 在应用关闭时断开数据库连接
-if (typeof process !== 'undefined') {
-  process.on('beforeExit', async () => {
-    await prisma.$disconnect();
-  });
-}
+const prisma = new Proxy({} as PrismaClient, {
+  get(_, prop) {
+    if (!_prisma) {
+      _prisma = getPrismaClient();
+    }
+    return Reflect.get(_prisma, prop);
+  },
+});
 
 export default prisma;
+
+// 导出 Repository 访问函数，供渐进式迁移使用
+export {
+  getGraduationTopicRepository,
+  getGenerationSessionRepository,
+  getMarkovChainRepository,
+  getMajorRepository,
+  getKeywordStatsRepository,
+  getGeneratedTopicRepository,
+  getTokenizedWordRepository,
+} from './core/container';

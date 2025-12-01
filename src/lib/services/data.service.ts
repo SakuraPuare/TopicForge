@@ -1,51 +1,47 @@
-import { PrismaClient } from '@prisma/client';
-import prisma from '../db';
+/**
+ * Data Service
+ * 数据获取服务 - 使用新的 Repository 层
+ */
+
+import {
+  getGraduationTopicRepository,
+  getGenerationSessionRepository,
+} from '../db';
+import type {
+  IDataService,
+  MajorYearData,
+  GenerationSessionInfo,
+} from '../domain/interfaces/services/IDataService';
 import type {
   GenerationResult,
   GenerationParams,
 } from '../interfaces/generation';
 
-export interface MajorYearData {
-  majors: string[];
-  years: number[];
-}
+// Re-export for backward compatibility
+export type { MajorYearData };
 
 /**
  * 数据获取服务类
  * 负责从数据库获取基础数据
+ *
+ * 注意：此服务已迁移到使用新的 Repository 层
+ * 当前使用单例模式，后续可迁移到 DI 容器
  */
-export class DataService {
-  private db: PrismaClient;
-
-  constructor() {
-    this.db = prisma;
-  }
-
+export class DataService implements IDataService {
   /**
    * 获取所有专业和年份信息
    */
   async getMajorsAndYears(): Promise<MajorYearData> {
     try {
-      // 获取所有不同的专业和年份
-      const majors = await this.db.graduationTopic.findMany({
-        distinct: ['major'],
-        select: { major: true },
-        where: { major: { not: null } },
-        orderBy: { major: 'asc' },
-      });
-
-      const years = await this.db.graduationTopic.findMany({
-        distinct: ['year'],
-        select: { year: true },
-        where: { year: { not: null } },
-        orderBy: { year: 'desc' },
-      });
+      const repo = getGraduationTopicRepository();
+      const [majorsResult, yearsResult] = await Promise.all([
+        repo.getDistinctMajors(),
+        repo.getDistinctYears(),
+      ]);
 
       return {
-        majors: majors
-          .map((m: { major: string | null }) => m.major!)
-          .filter(Boolean),
-        years: years.map((y: { year: number | null }) => y.year!),
+        majors: majorsResult.success ? majorsResult.data : [],
+        years: yearsResult.success ? yearsResult.data : [],
       };
     } catch (error) {
       console.error('获取专业和年份数据失败:', error);
@@ -57,104 +53,45 @@ export class DataService {
    * 获取所有专业列表
    */
   async getMajors(): Promise<string[]> {
-    const majors = await this.db.graduationTopic.findMany({
-      where: {
-        AND: [
-          {
-            major: {
-              not: null,
-            },
-          },
-          {
-            major: {
-              not: '',
-            },
-          },
-        ],
-      },
-      select: {
-        major: true,
-      },
-      distinct: ['major'],
-    });
-
-    return majors
-      .map((item: { major: string | null }) => item.major)
-      .filter((major): major is string => major !== null && major !== '')
-      .sort();
+    const repo = getGraduationTopicRepository();
+    const result = await repo.getDistinctMajors();
+    return result.success ? result.data : [];
   }
 
   /**
    * 获取所有年份列表
    */
   async getYears(): Promise<number[]> {
-    const years = await this.db.graduationTopic.findMany({
-      where: {
-        year: {
-          not: null,
-        },
-      },
-      select: {
-        year: true,
-      },
-      distinct: ['year'],
-      orderBy: {
-        year: 'desc',
-      },
-    });
-
-    return years
-      .map((item: { year: number | null }) => item.year)
-      .filter((year): year is number => year !== null)
-      .sort((a: number, b: number) => b - a);
+    const repo = getGraduationTopicRepository();
+    const result = await repo.getDistinctYears();
+    return result.success ? result.data : [];
   }
 
   /**
    * 根据专业获取相关年份
    */
   async getYearsByMajor(major: string): Promise<number[]> {
-    const years = await this.db.graduationTopic.findMany({
-      where: {
-        major,
-        year: {
-          not: null,
-        },
-      },
-      select: {
-        year: true,
-      },
-      distinct: ['year'],
-      orderBy: {
-        year: 'desc',
-      },
-    });
-
-    return years
-      .map((item: { year: number | null }) => item.year)
-      .filter((year): year is number => year !== null)
-      .sort((a: number, b: number) => b - a);
+    const repo = getGraduationTopicRepository();
+    const result = await repo.getYearsByMajor(major);
+    return result.success ? result.data : [];
   }
 
   /**
    * 统计专业下的题目数量
    */
   async getTopicCountByMajor(major: string): Promise<number> {
-    return await this.db.graduationTopic.count({
-      where: {
-        major,
-      },
-    });
+    const repo = getGraduationTopicRepository();
+    const result = await repo.count({ major });
+    return result.success ? result.data : 0;
   }
 
   /**
    * 统计年份下的题目数量
    */
   async getTopicCountByYear(year: number): Promise<number> {
-    return await this.db.graduationTopic.count({
-      where: {
-        year,
-      },
-    });
+    const repo = getGraduationTopicRepository();
+    const result = await repo.count({ year });
+    return result.success ? result.data : 0;
   }
 
   /**
@@ -162,21 +99,20 @@ export class DataService {
    */
   async saveGenerationSession(result: GenerationResult): Promise<string> {
     try {
-      // 设置过期时间为7天后
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 7);
-
-      const session = await this.db.generationSession.create({
-        data: {
-          topics: JSON.stringify(result.topics),
-          algorithm: result.algorithm,
-          params: JSON.stringify(result.params || {}),
-          stats: JSON.stringify(result.stats),
-          expiresAt,
-        },
+      const repo = getGenerationSessionRepository();
+      const saveResult = await repo.save({
+        topics: result.topics,
+        algorithm: result.algorithm,
+        params: (result.params || {}) as Record<string, unknown>,
+        stats: result.stats as Record<string, unknown>,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
       });
 
-      return session.id;
+      if (!saveResult.success) {
+        throw new Error(saveResult.error.message);
+      }
+
+      return saveResult.data.id;
     } catch (error) {
       console.error('保存生成会话失败:', error);
       throw new Error('保存生成结果失败');
@@ -190,28 +126,27 @@ export class DataService {
     sessionId: string
   ): Promise<GenerationResult | null> {
     try {
-      const session = await this.db.generationSession.findUnique({
-        where: { id: sessionId },
-      });
+      const repo = getGenerationSessionRepository();
+      const result = await repo.findById(sessionId);
 
-      if (!session) {
+      if (!result.success || !result.data) {
         return null;
       }
+
+      const session = result.data;
 
       // 检查是否过期
       if (session.expiresAt < new Date()) {
         // 删除过期的会话
-        await this.db.generationSession.delete({
-          where: { id: sessionId },
-        });
+        await repo.delete(sessionId);
         return null;
       }
 
       return {
-        topics: JSON.parse(session.topics as string) as string[],
+        topics: session.topics,
         algorithm: session.algorithm,
-        params: JSON.parse(session.params as string) as GenerationParams,
-        stats: JSON.parse(session.stats as string) as GenerationResult['stats'],
+        params: session.params as GenerationParams,
+        stats: session.stats as GenerationResult['stats'],
       };
     } catch (error) {
       console.error('获取生成会话失败:', error);
@@ -222,59 +157,25 @@ export class DataService {
   /**
    * 获取最近的生成历史记录
    */
-  async getRecentGenerationSessions(limit: number = 10): Promise<
-    Array<{
-      id: string;
-      algorithm: string;
-      params: GenerationParams;
-      stats: GenerationResult['stats'];
-      createdAt: Date;
-      topicCount: number;
-    }>
-  > {
+  async getRecentGenerationSessions(
+    limit: number = 10
+  ): Promise<GenerationSessionInfo[]> {
     try {
-      const sessions = await this.db.generationSession.findMany({
-        where: {
-          expiresAt: {
-            gt: new Date(), // 只获取未过期的会话
-          },
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-        take: limit,
-        select: {
-          id: true,
-          algorithm: true,
-          params: true,
-          stats: true,
-          topics: true,
-          createdAt: true,
-        },
-      });
+      const repo = getGenerationSessionRepository();
+      const result = await repo.findRecent(limit);
 
-      return sessions.map(
-        (session: {
-          id: string;
-          algorithm: string;
-          params: unknown;
-          stats: unknown;
-          topics: unknown;
-          createdAt: Date;
-        }) => {
-          const topics = JSON.parse(session.topics as string) as string[];
-          return {
-            id: session.id,
-            algorithm: session.algorithm,
-            params: JSON.parse(session.params as string) as GenerationParams,
-            stats: JSON.parse(
-              session.stats as string
-            ) as GenerationResult['stats'],
-            createdAt: session.createdAt,
-            topicCount: topics.length,
-          };
-        }
-      );
+      if (!result.success) {
+        return [];
+      }
+
+      return result.data.map(session => ({
+        id: session.id,
+        algorithm: session.algorithm,
+        params: session.params as GenerationParams,
+        stats: session.stats as GenerationResult['stats'],
+        createdAt: session.createdAt,
+        topicCount: session.topics.length,
+      }));
     } catch (error) {
       console.error('获取历史记录失败:', error);
       return [];
@@ -286,15 +187,9 @@ export class DataService {
    */
   async cleanupExpiredSessions(): Promise<number> {
     try {
-      const result = await this.db.generationSession.deleteMany({
-        where: {
-          expiresAt: {
-            lt: new Date(),
-          },
-        },
-      });
-
-      return result.count;
+      const repo = getGenerationSessionRepository();
+      const result = await repo.deleteExpired();
+      return result.success ? result.data : 0;
     } catch (error) {
       console.error('清理过期会话失败:', error);
       return 0;
@@ -302,4 +197,5 @@ export class DataService {
   }
 }
 
+// 导出单例实例（向后兼容）
 export const dataService = new DataService();
