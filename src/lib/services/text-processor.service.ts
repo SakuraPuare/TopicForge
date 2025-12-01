@@ -43,25 +43,24 @@ export class TextProcessorService {
   /**
    * 中文分词
    * @param text 待分词的文本
-   * @returns 分词结果数组
+   * @returns 分词结果数组（保持顺序）
    */
   tokenize(text: string): string[] {
     const cleanText = this.cleanText(text);
     const tagged = nodejieba.tag(cleanText);
 
-    // 使用提取关键词的方式补充识别专业词组
-    const keywords = nodejieba.extract(cleanText, 5);
-    const keywordSet = new Set(keywords.map(k => k.word));
-
-    // 合并分词结果和关键词
+    // 合并分词结果
     const baseTokens = tagged
       .filter(token => this.isValidToken(token.word))
       .map(token => token.word);
 
-    // 把关键词添加到结果中
-    const result = new Set([...baseTokens, ...keywordSet]);
-
-    return Array.from(result);
+    // 保持顺序的去重（不使用 Set 以保持词序）
+    const seen = new Set<string>();
+    return baseTokens.filter(token => {
+      if (seen.has(token)) return false;
+      seen.add(token);
+      return true;
+    });
   }
 
   /**
@@ -311,26 +310,27 @@ export class TextProcessorService {
   }
 
   /**
-   * 优化的分词方法
+   * 优化的分词方法 - 使用 nodejieba 进行中文分词
    */
   private tokenizeOptimized(
     text: string,
     stopWordsSet?: Set<string>
   ): string[] {
-    // 使用预计算的停用词集合
     const stopWords = stopWordsSet || new Set(STOP_WORDS);
+    const cleanedText = this.cleanText(text);
 
-    return text
-      .toLowerCase()
-      .replace(/[^\u4e00-\u9fa5a-zA-Z0-9\s]/g, ' ') // 清理标点符号
-      .split(/\s+/)
-      .filter(token => {
-        return (
-          token.length > 0 &&
-          !stopWords.has(token) &&
-          !this.isPunctuation(token) &&
-          this.isValidToken(token)
-        );
+    // 使用 nodejieba 进行中文分词
+    const tagged = nodejieba.tag(cleanedText);
+
+    // 保持顺序的去重
+    const seen = new Set<string>();
+    return tagged
+      .filter(token => this.isValidToken(token.word))
+      .map(token => token.word)
+      .filter(word => {
+        if (seen.has(word) || stopWords.has(word)) return false;
+        seen.add(word);
+        return true;
       });
   }
 
@@ -386,13 +386,13 @@ export class TextProcessorService {
       uniqueness: this.assessUniqueness(tokens),
     };
 
+    // 权重分配（总和 = 100%）
     const score = Math.min(
       5.0 *
-        (0.3 +
-          factors.length * 0.3 +
-          factors.techTerms * 0.4 +
+        (factors.length * 0.25 +
+          factors.techTerms * 0.3 +
           factors.basicTerms * 0.2 +
-          factors.structure * 0.1 +
+          factors.structure * 0.15 +
           factors.uniqueness * 0.1),
       5.0
     );
@@ -483,13 +483,18 @@ export class TextProcessorService {
     };
 
     // 计算加权得分，总分为5分
+    // 权重分配（总和 = 100%）:
+    // - 长度: 25% - 题目长度合理性
+    // - 技术术语: 30% - 包含技术词汇
+    // - 基础术语: 20% - 包含基础学术词汇
+    // - 结构: 15% - 题目结构完整性
+    // - 唯一性: 10% - 词汇多样性
     const score = Math.min(
-      5.0 * // 将1.0的得分转换为5.0
-        (0.3 + // 基础分
-          factors.length * 0.3 +
-          factors.techTerms * 0.4 +
+      5.0 *
+        (factors.length * 0.25 +
+          factors.techTerms * 0.3 +
           factors.basicTerms * 0.2 +
-          factors.structure * 0.1 +
+          factors.structure * 0.15 +
           factors.uniqueness * 0.1),
       5.0
     );

@@ -21,11 +21,36 @@ export class TopicGeneratorService {
   private isModelTrained = false;
   private lastTrainingTime: Date | null = null;
 
+  // 动态质量阈值配置（满分5.0）
+  private readonly QUALITY_THRESHOLDS = {
+    markov: 0.4, // 马尔科夫生成允许更多多样性
+    template: 0.6, // 模板生成应更严格
+    hybrid: 0.5, // 混合算法取中间值
+    default: 0.5, // 默认阈值（原为0.15，现提高到0.5）
+  };
+
+  // 专业模型最小样本要求（原为10，现提高到50）
+  private readonly MIN_SAMPLES_FOR_MODEL = 50;
+
   constructor() {
     // 尝试加载已训练的模型
     this.loadTrainedModel().catch(() => {
       console.log('启动时未能加载训练模型，将在首次生成时重新训练');
     });
+  }
+
+  /**
+   * 获取动态质量阈值
+   * @param algorithm 算法类型
+   * @returns 质量阈值
+   */
+  private getQualityThreshold(algorithm?: string): number {
+    if (!algorithm) return this.QUALITY_THRESHOLDS.default;
+    return (
+      this.QUALITY_THRESHOLDS[
+        algorithm as keyof typeof this.QUALITY_THRESHOLDS
+      ] || this.QUALITY_THRESHOLDS.default
+    );
   }
 
   /**
@@ -161,6 +186,40 @@ export class TopicGeneratorService {
   }
 
   /**
+   * 过滤适合中文马尔科夫链训练的题目
+   * @param topics 原始题目
+   * @returns 过滤后的题目
+   */
+  private filterChineseTopics(
+    topics: Array<{
+      id: string;
+      title: string;
+      major?: string | null;
+    }>
+  ): Array<{
+    id: string;
+    title: string;
+    major?: string | null;
+  }> {
+    return topics.filter(topic => {
+      const title = topic.title;
+
+      // 1. 必须包含中文
+      if (!/[\u4e00-\u9fa5]/.test(title)) return false;
+
+      // 2. 中文字符占比 >= 50%
+      const chineseChars = (title.match(/[\u4e00-\u9fa5]/g) || []).length;
+      const totalChars = title.replace(/\s/g, '').length;
+      if (totalChars === 0 || chineseChars / totalChars < 0.5) return false;
+
+      // 3. 长度合理（8-80字符）
+      if (title.length < 8 || title.length > 80) return false;
+
+      return true;
+    });
+  }
+
+  /**
    * 处理训练数据 - 高性能版本
    * @param topics 原始题目
    * @param config 训练配置
@@ -176,8 +235,15 @@ export class TopicGeneratorService {
   ): Promise<(ProcessedTopic & { major?: string })[]> {
     console.log('🚀 开始高性能处理训练数据...');
 
-    const titles = topics.map(t => t.title);
-    const majors = topics.map(t => t.major || undefined);
+    // 预过滤：排除纯英文或英文比例过高的题目
+    const filteredTopics = this.filterChineseTopics(topics);
+    console.log(
+      `📋 预过滤完成：${filteredTopics.length.toLocaleString()}/${topics.length.toLocaleString()} 个中文题目 ` +
+        `(排除了 ${(topics.length - filteredTopics.length).toLocaleString()} 个英文/混合题目)`
+    );
+
+    const titles = filteredTopics.map(t => t.title);
+    const majors = filteredTopics.map(t => t.major || undefined);
 
     // 使用高性能批量处理
     const processedTopics = textProcessor.batchProcessForTraining(
@@ -185,8 +251,8 @@ export class TopicGeneratorService {
       majors
     );
 
-    // 过滤低质量题目
-    const qualityThreshold = config.qualityThreshold || 0.3;
+    // 过滤低质量题目（提高阈值到 0.5）
+    const qualityThreshold = config.qualityThreshold || 0.5;
     const validTopics = processedTopics.filter(
       topic => topic.quality >= qualityThreshold
     );
@@ -196,8 +262,8 @@ export class TopicGeneratorService {
         `平均质量分数: ${(validTopics.reduce((sum, t) => sum + t.quality, 0) / validTopics.length).toFixed(2)}`
     );
 
-    // 保存处理结果
-    await this.saveProcessedData(topics, processedTopics, config);
+    // 保存处理结果（只保存过滤后的题目）
+    await this.saveProcessedData(filteredTopics, processedTopics, config);
 
     return validTopics;
   }
@@ -304,7 +370,7 @@ export class TopicGeneratorService {
     for (const [major, stats] of majorStats.entries()) {
       await majorService.updateMajorInfo(major, {
         sampleCount: stats.sampleCount,
-        hasModel: stats.sampleCount >= 10,
+        hasModel: stats.sampleCount >= this.MIN_SAMPLES_FOR_MODEL,
         lastTrainingAt: new Date(),
         qualityStats: stats.qualityStats,
       });
@@ -422,10 +488,14 @@ export class TopicGeneratorService {
       }
     }
 
+    // 使用动态质量阈值
+    const algorithmType = params.algorithm || 'markov';
+    const dynamicThreshold = this.getQualityThreshold(algorithmType);
+
     const config = {
       count: 5,
-      algorithm: 'markov' as const,
-      qualityThreshold: 0.15,
+      algorithm: algorithmType as 'markov' | 'template' | 'hybrid',
+      qualityThreshold: params.qualityThreshold ?? dynamicThreshold,
       saveToHistory: true,
       ...params,
     };
@@ -675,12 +745,12 @@ export class TopicGeneratorService {
   /**
    * 检查专业是否有足够的样本
    * @param major 专业名称
-   * @param minSamples 最小样本数
+   * @param minSamples 最小样本数（默认使用 MIN_SAMPLES_FOR_MODEL）
    * @returns 是否有足够样本
    */
   async hasSufficientSamples(
     major: string,
-    minSamples: number = 10
+    minSamples: number = this.MIN_SAMPLES_FOR_MODEL
   ): Promise<boolean> {
     return majorService.hasSufficientSamples(major, minSamples);
   }

@@ -39,7 +39,9 @@ export class GraduationTopicRepository
     title: string
   ): Promise<Result<GraduationTopicDTO | null, DatabaseError>> {
     return this.executeQuery(async () => {
-      const record = await this.prisma.graduationTopic.findUnique({
+      // 使用 findFirst 因为 title 不是唯一字段
+      // 唯一约束是 [title, school, major, year] 组合
+      const record = await this.prisma.graduationTopic.findFirst({
         where: { title },
       });
       return record ? this.mapToDTO(record) : null;

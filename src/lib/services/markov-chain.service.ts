@@ -22,6 +22,15 @@ export class MarkovChainService {
   private majorStartTokensCache: Map<string, string[]> = new Map();
   private majorEndTokensCache: Map<string, string[]> = new Map();
 
+  // 词汇表（用于 Laplace 平滑）
+  private vocabulary: Set<string> = new Set();
+
+  // 高频词缓存（用于 OOV 回退）
+  private highFrequencyWords: string[] = [];
+
+  // Laplace 平滑参数
+  private readonly SMOOTHING_ALPHA = 0.1;
+
   // 通用开始和结束词汇
   private readonly START_TOKENS = [
     '基于',
@@ -117,6 +126,8 @@ export class MarkovChainService {
   private clearModels(): void {
     this.transitionTable.clear();
     this.majorSpecificChains.clear();
+    this.vocabulary.clear();
+    this.highFrequencyWords = [];
   }
 
   /**
@@ -145,6 +156,9 @@ export class MarkovChainService {
    * @param topics 训练数据
    */
   private trainGeneralModel(topics: ProcessedTopic[]): void {
+    // 词频统计，用于构建高频词列表
+    const wordFrequency = new Map<string, number>();
+
     topics.forEach(topic => {
       const tokens = topic.tokens; // 直接使用已经处理好的tokens
 
@@ -152,6 +166,17 @@ export class MarkovChainService {
       for (let i = 0; i < tokens.length - 1; i++) {
         const currentToken = tokens[i];
         const nextToken = tokens[i + 1];
+
+        // 构建词汇表
+        this.vocabulary.add(currentToken);
+        this.vocabulary.add(nextToken);
+
+        // 统计词频
+        wordFrequency.set(
+          currentToken,
+          (wordFrequency.get(currentToken) || 0) + 1
+        );
+        wordFrequency.set(nextToken, (wordFrequency.get(nextToken) || 0) + 1);
 
         if (!this.transitionTable.has(currentToken)) {
           this.transitionTable.set(currentToken, new Map());
@@ -161,6 +186,16 @@ export class MarkovChainService {
         transitions.set(nextToken, (transitions.get(nextToken) || 0) + 1);
       }
     });
+
+    // 构建高频词列表（取前100个高频词）
+    this.highFrequencyWords = Array.from(wordFrequency.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 100)
+      .map(([word]) => word);
+
+    console.log(
+      `词汇表大小: ${this.vocabulary.size}, 高频词数量: ${this.highFrequencyWords.length}`
+    );
   }
 
   /**
@@ -285,7 +320,20 @@ export class MarkovChainService {
   }
 
   /**
-   * 根据概率分布选择下一个词
+   * 获取随机高频词（用于 OOV 回退）
+   * @returns 随机高频词
+   */
+  private getRandomHighFrequencyWord(): string | null {
+    if (this.highFrequencyWords.length === 0) {
+      return null;
+    }
+    return this.highFrequencyWords[
+      Math.floor(Math.random() * Math.min(20, this.highFrequencyWords.length))
+    ];
+  }
+
+  /**
+   * 根据概率分布选择下一个词（带 Laplace 平滑和 OOV 回退）
    * @param currentWord 当前词
    * @param temperature 温度参数
    * @param transitionTable 状态转移表
@@ -297,20 +345,31 @@ export class MarkovChainService {
     transitionTable: Map<string, Map<string, number>>
   ): string | null {
     const transitions = transitionTable.get(currentWord);
+
+    // OOV 回退策略：如果当前词没有转移记录，使用高频词
     if (!transitions || transitions.size === 0) {
-      return null;
+      return this.getRandomHighFrequencyWord();
     }
 
+    // 计算原始总频次
     const total = Array.from(transitions.values()).reduce(
       (sum, count) => sum + count,
       0
     );
+
+    // 词汇表大小（用于 Laplace 平滑）
+    const vocabSize = Math.max(this.vocabulary.size, 1000);
+    const alpha = this.SMOOTHING_ALPHA;
+
     const normalizedTransitions = new Map<string, number>();
 
-    // 应用温度参数调整概率分布
+    // 应用 Laplace 平滑和温度参数
     transitions.forEach((count, word) => {
-      const probability = Math.pow(count / total, 1 / temperature);
-      normalizedTransitions.set(word, probability);
+      // Laplace 平滑: P(w) = (count + alpha) / (total + alpha * V)
+      const smoothedProb = (count + alpha) / (total + alpha * vocabSize);
+      // 应用温度参数
+      const adjustedProb = Math.pow(smoothedProb, 1 / temperature);
+      normalizedTransitions.set(word, adjustedProb);
     });
 
     const totalProbability = Array.from(normalizedTransitions.values()).reduce(
@@ -336,6 +395,8 @@ export class MarkovChainService {
   clear(): void {
     this.transitionTable.clear();
     this.majorSpecificChains.clear();
+    this.vocabulary.clear();
+    this.highFrequencyWords = [];
   }
 
   /**
@@ -348,6 +409,9 @@ export class MarkovChainService {
       // 清除现有模型
       this.clearModels();
 
+      // 用于重建词汇表和词频统计
+      const wordFrequency = new Map<string, number>();
+
       // 加载通用马尔科夫链
       const generalChains = await prisma.markovChain.findMany();
 
@@ -358,7 +422,25 @@ export class MarkovChainService {
 
         const nextWordMap = this.transitionTable.get(chain.currentWord)!;
         nextWordMap.set(chain.nextWord, chain.frequency);
+
+        // 重建词汇表和词频
+        this.vocabulary.add(chain.currentWord);
+        this.vocabulary.add(chain.nextWord);
+        wordFrequency.set(
+          chain.currentWord,
+          (wordFrequency.get(chain.currentWord) || 0) + chain.frequency
+        );
+        wordFrequency.set(
+          chain.nextWord,
+          (wordFrequency.get(chain.nextWord) || 0) + chain.frequency
+        );
       });
+
+      // 重建高频词列表
+      this.highFrequencyWords = Array.from(wordFrequency.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 100)
+        .map(([word]) => word);
 
       // 加载专业特定马尔科夫链
       const majorChains = await prisma.majorMarkovChain.findMany();
@@ -400,7 +482,7 @@ export class MarkovChainService {
       });
 
       console.log(
-        `✅ 模型加载成功: 通用状态${this.transitionTable.size}个, 专业模型${this.majorSpecificChains.size}个`
+        `✅ 模型加载成功: 通用状态${this.transitionTable.size}个, 专业模型${this.majorSpecificChains.size}个, 词汇表${this.vocabulary.size}个`
       );
     } catch (error) {
       console.error('从数据库加载模型失败:', error);
@@ -409,10 +491,14 @@ export class MarkovChainService {
   }
 
   /**
-   * 保存模型到数据库
+   * 保存模型到数据库（批量操作优化版）
    */
   async saveToDatabase(): Promise<void> {
+    const BATCH_SIZE = 1000; // 每批处理1000条记录
+
     try {
+      console.log('开始保存马尔科夫链模型到数据库...');
+
       // 清空现有数据
       await prisma.markovChain.deleteMany();
       await prisma.majorMarkovChain.deleteMany();
@@ -435,20 +521,23 @@ export class MarkovChainService {
       });
 
       if (generalChainData.length > 0) {
-        // 使用 upsert 逐个插入以处理潜在的重复项
-        for (const chainItem of generalChainData) {
-          await prisma.markovChain.upsert({
-            where: {
-              currentWord_nextWord: {
-                currentWord: chainItem.currentWord,
-                nextWord: chainItem.nextWord,
-              },
-            },
-            create: chainItem,
-            update: {
-              frequency: chainItem.frequency,
-            },
+        console.log(
+          `批量保存 ${generalChainData.length} 条通用马尔科夫链数据...`
+        );
+
+        // 批量插入（已通过 Map 去重，无需 skipDuplicates）
+        for (let i = 0; i < generalChainData.length; i += BATCH_SIZE) {
+          const batch = generalChainData.slice(i, i + BATCH_SIZE);
+          await prisma.markovChain.createMany({
+            data: batch,
           });
+
+          const progress = Math.min(i + BATCH_SIZE, generalChainData.length);
+          if (generalChainData.length > BATCH_SIZE) {
+            console.log(
+              `  通用链进度: ${progress}/${generalChainData.length} (${((progress / generalChainData.length) * 100).toFixed(1)}%)`
+            );
+          }
         }
       }
 
@@ -496,21 +585,23 @@ export class MarkovChainService {
       majorChainData.push(...uniqueMajorChains.values());
 
       if (majorChainData.length > 0) {
-        // 使用 upsert 逐个插入以处理潜在的重复项
-        for (const chainItem of majorChainData) {
-          await prisma.majorMarkovChain.upsert({
-            where: {
-              major_currentWord_nextWord: {
-                major: chainItem.major,
-                currentWord: chainItem.currentWord,
-                nextWord: chainItem.nextWord,
-              },
-            },
-            create: chainItem,
-            update: {
-              frequency: chainItem.frequency,
-            },
+        console.log(
+          `批量保存 ${majorChainData.length} 条专业特定马尔科夫链数据...`
+        );
+
+        // 批量插入（已通过 Map 去重，无需 skipDuplicates）
+        for (let i = 0; i < majorChainData.length; i += BATCH_SIZE) {
+          const batch = majorChainData.slice(i, i + BATCH_SIZE);
+          await prisma.majorMarkovChain.createMany({
+            data: batch,
           });
+
+          const progress = Math.min(i + BATCH_SIZE, majorChainData.length);
+          if (majorChainData.length > BATCH_SIZE) {
+            console.log(
+              `  专业链进度: ${progress}/${majorChainData.length} (${((progress / majorChainData.length) * 100).toFixed(1)}%)`
+            );
+          }
         }
       }
 
@@ -547,7 +638,7 @@ export class MarkovChainService {
     }
 
     // 批量生成，减少单个生成的开销
-    const batchSize = Math.min(count * 2, 20); // 生成目标数量的2倍，但不超过20个
+    const batchSize = Math.min(count * 3, 30); // 生成目标数量的3倍，但不超过30个
     const candidates: string[] = [];
 
     for (let i = 0; i < batchSize && candidates.length < count * 3; i++) {
@@ -557,11 +648,10 @@ export class MarkovChainService {
           temperature: 1.0,
         });
 
-        // 基本长度和重复检查
+        // 使用验证方法检查生成的题目质量
         if (
           topic &&
-          topic.length >= 6 &&
-          topic.length <= 50 &&
+          this.validateGeneratedTopic(topic) &&
           !candidates.includes(topic)
         ) {
           candidates.push(topic);
@@ -591,25 +681,35 @@ export class MarkovChainService {
       }
     }
 
-    // 如果结果不够，进行简单的回退生成（不进行质量检查）
+    // 如果结果不够，进行回退生成（使用降低的质量阈值）
     if (results.length < count) {
       console.log(`需要补充 ${count - results.length} 个题目`);
+      // 回退阈值为原阈值的80%，但不低于0.3
+      const fallbackThreshold = Math.max(qualityThreshold * 0.8, 0.3);
 
-      for (let i = 0; results.length < count && i < 10; i++) {
+      for (let i = 0; results.length < count && i < 20; i++) {
         try {
           const fallbackTopic = this.generateSingle({
-            temperature: 1.2, // 稍微提高随机性
+            temperature: 1.1, // 稍微提高随机性
             majorId: major,
           });
 
+          // 使用验证方法检查
           if (
             fallbackTopic &&
-            fallbackTopic.length >= 6 &&
-            fallbackTopic.length <= 50 &&
+            this.validateGeneratedTopic(fallbackTopic) &&
             !results.includes(fallbackTopic)
           ) {
-            results.push(fallbackTopic);
-            console.log(`✓ 回退生成题目 ${results.length}: ${fallbackTopic}`);
+            // 回退生成也进行质量检查，但使用降低的阈值
+            const processedFallback = textProcessor.batchProcess([
+              fallbackTopic,
+            ])[0];
+            if (processedFallback.quality >= fallbackThreshold) {
+              results.push(fallbackTopic);
+              console.log(
+                `✓ 回退生成题目 ${results.length}: ${fallbackTopic} (质量: ${processedFallback.quality.toFixed(2)})`
+              );
+            }
           }
         } catch {
           continue;
@@ -619,6 +719,55 @@ export class MarkovChainService {
 
     console.log(`马尔科夫生成完成: ${results.length}/${count} 个题目`);
     return results;
+  }
+
+  /**
+   * 智能拼接词汇
+   * - 中文之间不加空格
+   * - 英文之间加空格
+   * - 中英混合时根据情况处理
+   */
+  private smartJoin(tokens: string[]): string {
+    if (tokens.length === 0) return '';
+
+    let result = tokens[0];
+    for (let i = 1; i < tokens.length; i++) {
+      const prev = tokens[i - 1];
+      const curr = tokens[i];
+
+      const prevIsEnglish = /^[a-zA-Z0-9]+$/.test(prev);
+      const currIsEnglish = /^[a-zA-Z0-9]+$/.test(curr);
+
+      // 英文之间需要空格
+      if (prevIsEnglish && currIsEnglish) {
+        result += ' ' + curr;
+      } else {
+        result += curr;
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * 验证生成的题目质量
+   */
+  private validateGeneratedTopic(topic: string): boolean {
+    // 1. 长度检查
+    if (topic.length < 8 || topic.length > 50) return false;
+
+    // 2. 必须包含中文
+    const chineseChars = (topic.match(/[\u4e00-\u9fa5]/g) || []).length;
+    if (chineseChars < 4) return false;
+
+    // 3. 中文字符占比应该 > 50%
+    const totalChars = topic.replace(/\s/g, '').length;
+    if (chineseChars / totalChars < 0.5) return false;
+
+    // 4. 不能包含连续的长英文字符串（超过15个字母说明分词有问题）
+    if (/[a-zA-Z]{15,}/.test(topic)) return false;
+
+    return true;
   }
 
   /**
@@ -665,7 +814,8 @@ export class MarkovChainService {
       }
     }
 
-    return result.join('');
+    // 使用智能拼接
+    return this.smartJoin(result);
   }
 
   /**

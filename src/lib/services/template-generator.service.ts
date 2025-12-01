@@ -1,5 +1,6 @@
 import { GenerationOptions } from '../interfaces/markov';
 import { MAJOR_SPECIFIC_TECH_DICT } from '../constants/tech-dict';
+import { textProcessor } from './text-processor.service';
 
 /**
  * 模板生成器服务类
@@ -233,23 +234,31 @@ export class TemplateGeneratorService {
       }
     }
 
-    // 如果结果不够，进行简单的补充生成（降低质量要求）
+    // 如果结果不够，进行补充生成（使用降低的质量阈值）
     if (results.length < actualCount) {
       console.log(`需要补充 ${actualCount - results.length} 个题目`);
+      // 回退阈值：使用较低但仍有保障的阈值
+      const fallbackThreshold = 0.3;
 
-      for (let i = 0; results.length < actualCount && i < 15; i++) {
+      for (let i = 0; results.length < actualCount && i < 20; i++) {
         const template = this.selectRandomTemplate(templates);
         const topic = this.fillTemplate(template, options.major);
 
-        // 降低质量要求，只检查基本长度和重复
+        // 检查基本长度和重复
         if (
           topic &&
           topic.length >= 6 &&
           topic.length <= 50 &&
           !results.includes(topic)
         ) {
-          results.push(topic);
-          console.log(`✓ 补充生成题目 ${results.length}: ${topic}`);
+          // 补充生成也进行质量检查，使用降低的阈值
+          const processedTopic = textProcessor.batchProcess([topic])[0];
+          if (processedTopic.quality >= fallbackThreshold) {
+            results.push(topic);
+            console.log(
+              `✓ 补充生成题目 ${results.length}: ${topic} (质量: ${processedTopic.quality.toFixed(2)})`
+            );
+          }
         }
       }
     }
