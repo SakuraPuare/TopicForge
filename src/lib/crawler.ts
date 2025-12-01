@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import prisma from './db';
 
 // 超星系统API响应接口
@@ -443,9 +444,14 @@ class ChaoxingCrawler {
           continue; // 跳过无效标题
         }
 
-        // 检查是否已存在
-        const existing = await prisma.graduationTopic.findUnique({
-          where: { title: paper.title },
+        // 检查是否已存在（使用组合字段：title + school + major + year）
+        const existing = await prisma.graduationTopic.findFirst({
+          where: {
+            title: paper.title,
+            school: paper.university || null,
+            major: paper.major || null,
+            year: paper.year ? parseInt(paper.year) : null,
+          },
         });
 
         if (existing) {
@@ -500,26 +506,41 @@ class ChaoxingCrawler {
         return { saved, duplicates };
       }
 
-      // 批量检查重复数据
-      const titles = validPapers.map(paper => paper.title);
-      const existingTitles = await prisma.graduationTopic.findMany({
+      // 批量检查重复数据（使用组合字段：title + school + major + year）
+      // 先获取所有可能的title，然后查询这些title的所有记录以提高效率
+      const uniqueTitles = [...new Set(validPapers.map(paper => paper.title))];
+
+      const existingRecords = await prisma.graduationTopic.findMany({
         where: {
           title: {
-            in: titles,
+            in: uniqueTitles,
           },
         },
         select: {
           title: true,
+          school: true,
+          major: true,
+          year: true,
         },
       });
 
-      const existingTitleSet = new Set(
-        existingTitles.map((item: { title: string }) => item.title)
+      // 创建已存在记录的标识集合（使用组合键）
+      const existingKeySet = new Set(
+        existingRecords.map(
+          (item: {
+            title: string;
+            school: string | null;
+            major: string | null;
+            year: number | null;
+          }) =>
+            `${item.title}|${item.school ?? ''}|${item.major ?? ''}|${item.year ?? ''}`
+        )
       );
 
-      // 筛选出新数据
+      // 筛选出新数据（使用相同的组合键格式）
       const newPapers = validPapers.filter(paper => {
-        if (existingTitleSet.has(paper.title)) {
+        const key = `${paper.title}|${paper.university ?? ''}|${paper.major ?? ''}|${paper.year ? parseInt(paper.year) : ''}`;
+        if (existingKeySet.has(key)) {
           duplicates++;
           return false;
         }
@@ -550,17 +571,38 @@ class ChaoxingCrawler {
             });
             saved += batch.length;
           } catch (error) {
-            console.error(
-              `批量保存第 ${Math.floor(i / batchSize) + 1} 批数据失败:`,
-              error
-            );
+            // 检查是否是唯一约束错误
+            if (
+              error instanceof PrismaClientKnownRequestError &&
+              error.code === 'P2002'
+            ) {
+              // 批量保存时遇到唯一约束错误，回退到单条保存以处理重复
+              console.log(
+                `批量保存第 ${Math.floor(i / batchSize) + 1} 批数据遇到重复，切换到单条保存模式`
+              );
+            } else {
+              console.error(
+                `批量保存第 ${Math.floor(i / batchSize) + 1} 批数据失败:`,
+                error
+              );
+            }
             // 如果批量保存失败，回退到单条保存
             for (const item of batch) {
               try {
                 await prisma.graduationTopic.create({ data: item });
                 saved++;
               } catch (singleError) {
-                console.error(`单条保存失败: ${item.title}`, singleError);
+                // 检查是否是唯一约束错误（P2002）
+                if (
+                  singleError instanceof PrismaClientKnownRequestError &&
+                  singleError.code === 'P2002'
+                ) {
+                  // 唯一约束冲突，说明数据已存在，计入重复
+                  duplicates++;
+                } else {
+                  // 其他错误才记录日志
+                  console.error(`单条保存失败: ${item.title}`, singleError);
+                }
               }
             }
           }

@@ -1,10 +1,14 @@
-# ✨ TopicForge - AI 毕业设计选题生成器
+# TopicForge - AI 毕业设计选题生成器
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Next.js-15.3.3-black?style=for-the-badge&logo=next.js&logoColor=white" alt="Next.js" />
-  <img src="https://img.shields.io/badge/TypeScript-5.0-blue?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/Prisma-6.9.0-2D3748?style=for-the-badge&logo=prisma&logoColor=white" alt="Prisma" />
-  <img src="https://img.shields.io/badge/Tailwind_CSS-4.0-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white" alt="Tailwind CSS" />
+  <a href="https://github.com/SakuraPuare/TopicForge/actions/workflows/ci.yml">
+    <img src="https://github.com/SakuraPuare/TopicForge/actions/workflows/ci.yml/badge.svg" alt="CI" />
+  </a>
+  <img src="https://img.shields.io/badge/Next.js-16.0.6-black?style=flat-square&logo=next.js&logoColor=white" alt="Next.js" />
+  <img src="https://img.shields.io/badge/TypeScript-5.0-blue?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Prisma-6.19.0-2D3748?style=flat-square&logo=prisma&logoColor=white" alt="Prisma" />
+  <img src="https://img.shields.io/badge/Tailwind_CSS-4.0-38B2AC?style=flat-square&logo=tailwind-css&logoColor=white" alt="Tailwind CSS" />
+  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License" />
 </p>
 
 <p align="center">
@@ -263,14 +267,12 @@ npm run train
 ### 基本功能
 
 1. **选题生成**
-
    - 访问 `/generate` 页面
    - 选择专业和年份
    - 点击"生成选题"
    - 获得个性化选题建议
 
 2. **浏览题库**
-
    - 访问 `/topics` 页面
    - 按专业、年份筛选
    - 查看历史选题数据
@@ -517,15 +519,24 @@ npm run db:deploy
 
 ---
 
+## 📚 文档
+
+- [技术文档](docs/TECHNICAL.md) - 详细的架构和技术说明
+- [API 文档](docs/API.md) - API 接口参考
+- [贡献指南](CONTRIBUTING.md) - 如何参与项目贡献
+- [Claude 指导](CLAUDE.md) - Claude Code 开发指导
+
+---
+
 ## 🤝 贡献指南
 
-我们欢迎所有形式的贡献！
+我们欢迎所有形式的贡献！请查看 [CONTRIBUTING.md](CONTRIBUTING.md) 了解详情。
 
-### 开发流程
+### 快速开始
 
 1. **Fork 项目**
 2. **创建功能分支** (`git checkout -b feature/amazing-feature`)
-3. **提交更改** (`git commit -m 'Add amazing feature'`)
+3. **提交更改** (遵循 [Conventional Commits](https://www.conventionalcommits.org/) 规范)
 4. **推送分支** (`git push origin feature/amazing-feature`)
 5. **提交 Pull Request**
 

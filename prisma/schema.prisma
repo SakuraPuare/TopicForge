@@ -13,7 +13,7 @@ datasource db {
 // 毕业设计题目表
 model GraduationTopic {
   id          String   @id @default(cuid())
-  title       String   @unique
+  title       String
   school      String?
   major       String?
   year        Int?
@@ -25,6 +25,8 @@ model GraduationTopic {
   // 关联的分词结果
   tokenizedWords TokenizedWord[]
 
+  // 组合唯一约束：相同的题目、学校、专业、年份才算重复
+  @@unique([title, school, major, year])
   @@map("graduation_topics")
 }
 
